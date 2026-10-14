@@ -4,6 +4,7 @@ import { Card } from "../../components/Card"
 import { Button } from "../../components/Button"
 import { Badge } from "../../components/Badge"
 import { CheckCircle2, XCircle, ExternalLink } from "lucide-react"
+import { ErrorAlert } from "../../components/ErrorAlert"
 
 type Submission = {
   id: string
@@ -23,49 +24,80 @@ export function TaskVerificationView({ onCountChange }: { onCountChange?: (n: nu
   const [rejectingId, setRejectingId] = useState<string | null>(null)
   const [rejectionReason, setRejectionReason] = useState("")
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null)
 
   const fetchSubmissions = async () => {
     setLoading(true)
-    const { data } = await supabase
-      .from('task_submissions')
-      .select(`
-        id, proof_data, created_at, status, ambassador_id, task_id,
-        ambassadors (full_name, current_level, college_name),
-        tasks (name, required_proof_type, points)
-      `)
-      .eq('status', statusFilter)
-      .order('created_at', { ascending: false })
+    setError(null)
+    try {
+      const { data, error: fetchErr } = await supabase
+        .from('task_submissions')
+        .select(`
+          id, proof_data, created_at, status, ambassador_id, task_id,
+          ambassadors (full_name, current_level, college_name),
+          tasks (name, required_proof_type, points)
+        `)
+        .eq('status', statusFilter)
+        .order('created_at', { ascending: false })
 
-    if (data) setSubmissions(data as any)
+      if (fetchErr) throw fetchErr
+      if (data) setSubmissions(data as any)
 
-    // Update pending badge count
-    if (statusFilter === 'Pending' && onCountChange) {
-      onCountChange(data?.length || 0)
+      // Update pending badge count
+      if (statusFilter === 'Pending' && onCountChange) {
+        onCountChange(data?.length || 0)
+      }
+    } catch (err: any) {
+      console.error("Failed to fetch submissions:", err)
+      setError(err.message || "Failed to load task submissions.")
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   useEffect(() => { fetchSubmissions() }, [statusFilter])
 
   const handleApprove = async (id: string) => {
     setActionLoading(id)
-    await supabase.from('task_submissions').update({ status: 'Approved' }).eq('id', id)
-    await fetchSubmissions()
-    setActionLoading(null)
+    setFeedbackMsg(null)
+    try {
+      const { error: appErr } = await supabase.from('task_submissions').update({ status: 'Approved' }).eq('id', id)
+      if (appErr) throw appErr
+      setFeedbackMsg({ type: 'success', text: "Submission verified and approved successfully." })
+      setTimeout(() => setFeedbackMsg(null), 3500)
+      await fetchSubmissions()
+    } catch (err: any) {
+      console.error("Approve error:", err)
+      setFeedbackMsg({ type: 'error', text: err.message || "Failed to approve submission." })
+    } finally {
+      setActionLoading(null)
+    }
   }
 
   const handleRejectSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!rejectingId || !rejectionReason.trim()) return
     setActionLoading(rejectingId)
-    await supabase.from('task_submissions').update({
-      status: 'Rejected',
-      rejection_reason: rejectionReason
-    }).eq('id', rejectingId)
-    setRejectingId(null)
-    setRejectionReason("")
-    await fetchSubmissions()
-    setActionLoading(null)
+    setFeedbackMsg(null)
+    try {
+      const { error: rejErr } = await supabase.from('task_submissions').update({
+        status: 'Rejected',
+        rejection_reason: rejectionReason.trim()
+      }).eq('id', rejectingId)
+      if (rejErr) throw rejErr
+
+      setFeedbackMsg({ type: 'success', text: "Submission marked as rejected with reason recorded." })
+      setTimeout(() => setFeedbackMsg(null), 3500)
+      setRejectingId(null)
+      setRejectionReason("")
+      await fetchSubmissions()
+    } catch (err: any) {
+      console.error("Reject error:", err)
+      setFeedbackMsg({ type: 'error', text: err.message || "Failed to reject submission." })
+    } finally {
+      setActionLoading(null)
+    }
   }
 
   const isImage = (sub: Submission) =>
@@ -76,6 +108,24 @@ export function TaskVerificationView({ onCountChange }: { onCountChange?: (n: nu
 
   return (
     <div className="space-y-4 animate-in fade-in duration-300">
+      {error && <ErrorAlert message={error} onRetry={fetchSubmissions} />}
+
+      {feedbackMsg && (
+        <div
+          className={`p-3.5 rounded-xl border flex items-center gap-2.5 text-xs sm:text-sm animate-fade-in ${
+            feedbackMsg.type === 'success'
+              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+              : 'bg-rose-500/10 border-rose-500/20 text-rose-300'
+          }`}
+        >
+          {feedbackMsg.type === 'success' ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          ) : (
+            <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+          )}
+          <span>{feedbackMsg.text}</span>
+        </div>
+      )}
       {/* Filter bar */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex gap-2">
@@ -192,8 +242,8 @@ export function TaskVerificationView({ onCountChange }: { onCountChange?: (n: nu
 
       {/* Reject modal */}
       {rejectingId && (
-        <div className="fixed inset-0 bg-black/80 flex items-end sm:items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <Card className="w-full max-w-md shadow-2xl bg-bg-card sm:rounded-2xl rounded-t-2xl">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm overflow-y-auto">
+          <Card className="w-full max-w-md shadow-2xl bg-bg-card rounded-2xl my-auto border border-border-dark">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-bold text-white">Reject Submission</h3>
               <button onClick={() => setRejectingId(null)} className="text-text-muted hover:text-white transition-colors">

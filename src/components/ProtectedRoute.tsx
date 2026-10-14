@@ -1,16 +1,9 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom"
 import { useAuth } from "../contexts/AuthContext"
+import { LoadingState } from "./LoadingState"
 
-// Loader shown while auth state loads
 function AuthLoader() {
-  return (
-    <div className="min-h-screen bg-bg-dark flex items-center justify-center">
-      <div className="flex flex-col items-center gap-4">
-        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-text-muted text-sm">Authenticating...</p>
-      </div>
-    </div>
-  )
+  return <LoadingState variant="full-page" message="Verifying credentials..." />
 }
 
 /** Requires authentication — if not logged in, redirect to /login */

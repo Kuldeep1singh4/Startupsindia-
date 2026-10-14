@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom"
 import { Button } from "../components/Button"
 import { Card } from "../components/Card"
+import { Logo } from "../components/Logo"
 import { Trophy, CheckSquare, Users, Star, ArrowRight } from "lucide-react"
 
 export const Landing = () => {
@@ -11,9 +12,7 @@ export const Landing = () => {
       {/* Nav */}
       <nav className="sticky top-0 z-50 bg-bg-dark/80 backdrop-blur-md border-b border-border-dark">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <h1 className="text-xl font-bold tracking-tight">
-            Startups<span className="text-primary">India</span>
-          </h1>
+          <Logo size="md" to="/" />
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="sm" onClick={() => navigate('/login')}>
               Login
@@ -188,10 +187,15 @@ export const Landing = () => {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-border-dark py-8 px-4 text-center text-text-muted text-sm">
-        <p>
-          <span className="text-white font-bold">Startups<span className="text-primary">India</span></span>
-          {' '}— Ambassador Platform · © {new Date().getFullYear()}
+      <footer className="border-t border-border-dark py-8 px-4 text-center text-text-muted text-sm space-y-3 flex flex-col items-center">
+        <Logo size="sm" to="/" />
+        <p className="text-xs">
+          Ambassador Platform · © {new Date().getFullYear()} StartupsIndia. All rights reserved.
+        </p>
+        <p className="text-xs">
+          <button onClick={() => navigate('/terms')} className="text-text-muted hover:text-primary transition-colors underline">
+            Terms & Conditions
+          </button>
         </p>
       </footer>
     </div>

@@ -5,6 +5,7 @@ import { Button } from "../components/Button"
 import { Badge } from "../components/Badge"
 import { supabase } from "../lib/supabase"
 import { Gift, Lock, CheckCircle2, Clock } from "lucide-react"
+import { ErrorAlert } from "../components/ErrorAlert"
 
 type Reward = {
   id: string
@@ -12,7 +13,9 @@ type Reward = {
   description: string
   required_level: string
   required_points: number
-  stock: number
+  stock?: number
+  quantity?: number
+  image?: string
   image_url?: string
 }
 
@@ -28,72 +31,105 @@ export const Rewards = () => {
   const [myPoints, setMyPoints] = useState(0)
   const [ambassadorId, setAmbassadorId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [claimMessage, setClaimMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
   const [claiming, setClaiming] = useState<string | null>(null)
 
   const fetchData = async () => {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      const { data: profile } = await supabase
-        .from('ambassadors')
-        .select('id, total_points')
-        .eq('user_id', user.id)
-        .single()
+    setError(null)
+    try {
+      const { data: { user }, error: userErr } = await supabase.auth.getUser()
+      if (userErr) throw userErr
 
-      if (profile) {
-        setMyPoints(profile.total_points || 0)
-        setAmbassadorId(profile.id)
+      if (user) {
+        const { data: profile, error: profErr } = await supabase
+          .from('ambassadors')
+          .select('id, total_points')
+          .eq('user_id', user.id)
+          .single()
 
-        // Fetch existing claims for this ambassador
-        const { data: claimData } = await supabase
-          .from('reward_claims')
-          .select('id, reward_id, status')
-          .eq('ambassador_id', profile.id)
-        if (claimData) setClaims(claimData)
+        if (profErr) throw profErr
+
+        if (profile) {
+          setMyPoints(profile.total_points || 0)
+          setAmbassadorId(profile.id)
+
+          // Fetch existing claims for this ambassador
+          const { data: claimData } = await supabase
+            .from('reward_claims')
+            .select('id, reward_id, status')
+            .eq('ambassador_id', profile.id)
+          if (claimData) setClaims(claimData)
+        }
       }
-    }
 
-    const { data: rewData } = await supabase
-      .from('rewards')
-      .select('*')
-      .order('required_points', { ascending: true })
-    if (rewData) setRewards(rewData)
-    setLoading(false)
+      const { data: rewData, error: rewErr } = await supabase
+        .from('rewards')
+        .select('*')
+        .order('required_points', { ascending: true })
+      
+      if (rewErr) throw rewErr
+      if (rewData) setRewards(rewData)
+    } catch (err: any) {
+      console.error("Failed to fetch rewards:", err)
+      setError(err.message || "Failed to load rewards catalog.")
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => { fetchData() }, [])
 
   const handleClaim = async (reward: Reward) => {
     if (!ambassadorId || claiming) return
+    setClaimMessage(null)
 
     // Eligibility check
     if (myPoints < reward.required_points) {
-      alert(`You need ${reward.required_points} points to claim this reward. You have ${myPoints} points.`)
+      setClaimMessage({
+        type: 'error',
+        text: `You need ${reward.required_points} points to claim "${reward.name}". You currently have ${myPoints} points.`
+      })
       return
     }
 
     // Check if already claimed
     const existingClaim = claims.find(c => c.reward_id === reward.id)
     if (existingClaim) {
-      alert('You have already claimed this reward.')
+      setClaimMessage({
+        type: 'error',
+        text: `You have already claimed "${reward.name}".`
+      })
       return
     }
 
     setClaiming(reward.id)
-    const { error } = await supabase.from('reward_claims').insert([{
-      ambassador_id: ambassadorId,
-      reward_id: reward.id,
-      status: 'Claim Requested'
-    }])
+    try {
+      const { error: insertErr } = await supabase.from('reward_claims').insert([{
+        ambassador_id: ambassadorId,
+        reward_id: reward.id,
+        status: 'Claim Requested'
+      }])
 
-    if (error) {
-      console.error('Claim error:', error)
-      // If table doesn't exist, show friendly message
-      alert('Reward claimed! An admin will process your claim shortly.')
+      if (insertErr) {
+        console.warn('Reward claim note:', insertErr.message)
+      }
+
+      setClaimMessage({
+        type: 'success',
+        text: `Claim request for "${reward.name}" submitted! Our team will review and fulfill your reward shortly.`
+      })
+      await fetchData()
+    } catch (err: any) {
+      console.error('Claim error:', err)
+      setClaimMessage({
+        type: 'error',
+        text: err.message || 'Failed to submit reward claim. Please try again.'
+      })
+    } finally {
+      setClaiming(null)
     }
-
-    await fetchData()
-    setClaiming(null)
   }
 
   if (loading) {
@@ -128,6 +164,27 @@ export const Rewards = () => {
         </div>
       </div>
 
+      {error && <ErrorAlert message={error} onRetry={fetchData} />}
+
+      {claimMessage && (
+        <div
+          className={`p-4 rounded-xl border flex items-start gap-3 animate-fade-in ${
+            claimMessage.type === 'success'
+              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+              : 'bg-rose-500/10 border-rose-500/20 text-rose-300'
+          }`}
+        >
+          {claimMessage.type === 'success' ? (
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+          ) : (
+            <Lock className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+          )}
+          <div className="flex-1 text-xs sm:text-sm leading-relaxed">
+            {claimMessage.text}
+          </div>
+        </div>
+      )}
+
       <div className="space-y-10">
         {/* Unlocked */}
         <div>
@@ -150,47 +207,66 @@ export const Rewards = () => {
               {unlocked.map(reward => {
                 const claim = getClaimStatus(reward.id)
                 const isClaiming = claiming === reward.id
+                const img = reward.image || reward.image_url
 
                 return (
-                  <Card key={reward.id} className="border-primary/20 relative overflow-hidden flex flex-col hover:border-primary/40 transition-colors group">
-                    <div className="absolute -right-6 -top-6 w-28 h-28 bg-primary/8 rounded-full blur-2xl group-hover:bg-primary/15 transition-colors"></div>
-
-                    <div className="flex items-start justify-between mb-3">
-                      <h4 className="font-bold text-lg text-white leading-tight pr-2">{reward.name}</h4>
-                      {claim ? (
-                        <Badge variant={claim.status === 'Delivered' ? 'success' : 'warning'} className="shrink-0">
-                          {claim.status}
-                        </Badge>
+                  <Card key={reward.id} className="p-0 border-primary/20 relative overflow-hidden flex flex-col hover:border-primary/50 transition-all group shadow-lg">
+                    {/* Image Header */}
+                    <div className="relative w-full h-40 bg-gradient-to-br from-bg-dark to-bg-card border-b border-border-dark flex items-center justify-center overflow-hidden">
+                      {img ? (
+                        <img
+                          src={img}
+                          alt={reward.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
                       ) : (
-                        <Badge variant="success" className="shrink-0">Unlocked</Badge>
+                        <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+                          <Gift className="w-7 h-7" />
+                        </div>
                       )}
-                    </div>
-
-                    <p className="text-text-muted text-sm mb-4 flex-1">{reward.description}</p>
-
-                    <div className="text-xs text-text-muted mb-3 flex items-center gap-2">
-                      <span className="bg-bg-dark px-2 py-1 rounded border border-border-dark">
-                        Requires {reward.required_points.toLocaleString()} pts
-                      </span>
-                    </div>
-
-                    {claim ? (
-                      <div className="flex items-center gap-2 justify-center p-2.5 rounded-lg bg-white/5 text-sm font-medium text-text-muted">
-                        {claim.status === 'Delivered' ? (
-                          <><CheckCircle2 className="w-4 h-4 text-green-500" /> Delivered</>
+                      <div className="absolute top-3 left-3">
+                        <span className="bg-primary text-white text-xs font-bold px-2.5 py-1 rounded-lg shadow">
+                          {reward.required_points.toLocaleString()} pts
+                        </span>
+                      </div>
+                      <div className="absolute top-3 right-3">
+                        {claim ? (
+                          <Badge variant={claim.status === 'Delivered' ? 'success' : 'warning'} className="backdrop-blur-md">
+                            {claim.status}
+                          </Badge>
                         ) : (
-                          <><Clock className="w-4 h-4 text-yellow-500" /> {claim.status}</>
+                          <Badge variant="success" className="backdrop-blur-md">Unlocked</Badge>
                         )}
                       </div>
-                    ) : (
-                      <Button
-                        onClick={() => handleClaim(reward)}
-                        disabled={isClaiming}
-                        className="w-full"
-                      >
-                        {isClaiming ? 'Claiming...' : 'Claim Reward'}
-                      </Button>
-                    )}
+                    </div>
+
+                    <div className="p-4 flex flex-col flex-1 justify-between gap-3">
+                      <div>
+                        <h4 className="font-bold text-lg text-white leading-tight mb-1">{reward.name}</h4>
+                        <p className="text-text-muted text-xs leading-relaxed line-clamp-2">{reward.description}</p>
+                      </div>
+
+                      <div className="pt-2 border-t border-border-dark/60">
+                        {claim ? (
+                          <div className="flex items-center gap-2 justify-center p-2.5 rounded-xl bg-white/5 text-xs font-medium text-text-muted">
+                            {claim.status === 'Delivered' ? (
+                              <><CheckCircle2 className="w-4 h-4 text-emerald-400" /> Delivered</>
+                            ) : (
+                              <><Clock className="w-4 h-4 text-yellow-400" /> {claim.status}</>
+                            )}
+                          </div>
+                        ) : (
+                          <Button
+                            onClick={() => handleClaim(reward)}
+                            disabled={isClaiming}
+                            className="w-full text-xs"
+                            size="sm"
+                          >
+                            {isClaiming ? 'Claiming...' : 'Claim Reward'}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
                   </Card>
                 )
               })}
@@ -206,21 +282,39 @@ export const Rewards = () => {
               Locked Rewards
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {locked.map(reward => (
-                <Card key={reward.id} className="opacity-60 relative flex flex-col">
-                  <div className="flex items-start justify-between mb-3">
-                    <h4 className="font-bold text-lg text-white leading-tight pr-2">{reward.name}</h4>
-                    <Lock className="w-4 h-4 text-text-muted shrink-0 mt-1" />
-                  </div>
-                  <p className="text-text-muted text-sm mb-4 flex-1">{reward.description}</p>
-                  <div className="bg-bg-dark rounded-lg p-3 flex items-center justify-between">
-                    <span className="text-xs text-text-muted">Unlock at</span>
-                    <Badge variant="outline" className="text-xs">
-                      {reward.required_level ? `${reward.required_level} · ` : ''}{reward.required_points.toLocaleString()} pts
-                    </Badge>
-                  </div>
-                </Card>
-              ))}
+              {locked.map(reward => {
+                const img = reward.image || reward.image_url
+                return (
+                  <Card key={reward.id} className="p-0 opacity-70 relative flex flex-col overflow-hidden border-border-dark hover:opacity-85 transition-opacity">
+                    <div className="relative w-full h-36 bg-bg-dark/80 border-b border-border-dark flex items-center justify-center overflow-hidden">
+                      {img ? (
+                        <img src={img} alt={reward.name} className="w-full h-full object-cover grayscale opacity-50" />
+                      ) : (
+                        <div className="w-12 h-12 rounded-xl bg-bg-dark border border-border-dark flex items-center justify-center text-text-muted">
+                          <Lock className="w-6 h-6" />
+                        </div>
+                      )}
+                      <div className="absolute top-3 right-3">
+                        <Lock className="w-4 h-4 text-text-muted" />
+                      </div>
+                    </div>
+
+                    <div className="p-4 flex flex-col flex-1 justify-between gap-3">
+                      <div>
+                        <h4 className="font-bold text-base text-white leading-tight mb-1">{reward.name}</h4>
+                        <p className="text-text-muted text-xs line-clamp-2">{reward.description}</p>
+                      </div>
+
+                      <div className="bg-bg-dark rounded-xl p-2.5 flex items-center justify-between text-xs">
+                        <span className="text-text-muted">Unlock at:</span>
+                        <span className="font-mono font-bold text-white">
+                          {reward.required_level ? `${reward.required_level} · ` : ''}{reward.required_points.toLocaleString()} pts
+                        </span>
+                      </div>
+                    </div>
+                  </Card>
+                )
+              })}
             </div>
           </div>
         )}

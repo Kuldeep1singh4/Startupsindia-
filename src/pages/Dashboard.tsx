@@ -7,6 +7,7 @@ import { Lock, Trophy, CheckSquare, Users, Star } from "lucide-react"
 import { cn } from "../lib/utils"
 import { Link } from "react-router-dom"
 import { useAuth } from "../contexts/AuthContext"
+import { ErrorAlert } from "../components/ErrorAlert"
 
 const LEVELS = [
   { name: 'Bronze', emoji: '🥉', designation: 'Campus Ambassador', points: 0 },
@@ -23,16 +24,19 @@ export const Dashboard = () => {
   const [referralsCount, setReferralsCount] = useState(0)
   const [myRank, setMyRank] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    const fetchAll = async () => {
-      if (!profile) { setLoading(false); return }
+  const fetchAll = async () => {
+    if (!profile) { setLoading(false); return }
+    setLoading(true)
+    setError(null)
 
+    try {
       // Parallel fetch for counts (not in context)
       const [
-        { count: taskCount },
-        { count: refCount },
-        { count: rankCount },
+        { count: taskCount, error: taskErr },
+        { count: refCount, error: refErr },
+        { count: rankCount, error: rankErr },
       ] = await Promise.all([
         supabase.from('task_submissions')
           .select('*', { count: 'exact', head: true })
@@ -42,19 +46,29 @@ export const Dashboard = () => {
           ? supabase.from('ambassadors')
             .select('*', { count: 'exact', head: true })
             .eq('referred_by', profile.referral_code)
-          : Promise.resolve({ count: 0 }),
+          : Promise.resolve({ count: 0, error: null }),
         supabase.from('ambassadors')
           .select('*', { count: 'exact', head: true })
           .eq('status', 'Approved')
           .gt('total_points', profile.total_points || 0),
       ])
 
+      if (taskErr) throw taskErr
+      if (refErr) throw refErr
+      if (rankErr) throw rankErr
+
       if (taskCount !== null) setCompletedTasks(taskCount)
       if (refCount !== null) setReferralsCount(refCount)
       if (rankCount !== null) setMyRank(rankCount + 1)
-
+    } catch (err: any) {
+      console.error("Failed to load dashboard metrics:", err)
+      setError(err.message || "Failed to load dashboard statistics.")
+    } finally {
       setLoading(false)
     }
+  }
+
+  useEffect(() => {
     fetchAll()
   }, [profile])
 
@@ -144,6 +158,8 @@ export const Dashboard = () => {
         title={`Welcome back, ${profile.full_name?.split(' ')[0] || 'Ambassador'} 👋`}
         subtitle="Complete tasks, earn points and unlock new opportunities."
       />
+
+      {error && <ErrorAlert message={error} onRetry={fetchAll} />}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">

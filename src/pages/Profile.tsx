@@ -1,39 +1,46 @@
 import { useEffect, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { SectionHeader } from "../components/SectionHeader"
 import { Card } from "../components/Card"
-import { supabase } from "../lib/supabase"
+import { useAuth } from "../contexts/AuthContext"
 import { User, Mail, Building2, MapPin, Phone, Shield, Copy, CheckCircle2, BookOpen, Hash } from "lucide-react"
 import { Badge } from "../components/Badge"
 
 export const Profile = () => {
-  const [profile, setProfile] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
+  const { profile: authProfile, loading: authLoading } = useAuth()
+  const navigate = useNavigate()
   const [copied, setCopied] = useState(false)
+  const [copyMsg, setCopyMsg] = useState<string | null>(null)
+
+  const profile = authProfile
+  const loading = authLoading
 
   useEffect(() => {
-    const fetchProfile = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data } = await supabase.from('ambassadors').select('*').eq('user_id', user.id).single()
-        if (data) setProfile(data)
-      }
-      setLoading(false)
+    if (!loading && profile?.role === 'admin') {
+      navigate('/admin?tab=profile', { replace: true })
     }
-    fetchProfile()
-  }, [])
+  }, [profile, loading, navigate])
 
   const handleCopyCode = () => {
     if (!profile?.referral_code) return
     navigator.clipboard.writeText(profile.referral_code)
     setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    setCopyMsg("Referral code copied to clipboard!")
+    setTimeout(() => {
+      setCopied(false)
+      setCopyMsg(null)
+    }, 2500)
   }
 
   const handleCopyLink = () => {
     const link = `${window.location.origin}/register?ref=${profile?.referral_code}`
     navigator.clipboard.writeText(link)
     setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    setCopyMsg("Referral link copied to clipboard!")
+    setTimeout(() => {
+      setCopied(false)
+      setCopyMsg(null)
+    }, 2500)
   }
 
   if (loading) {
@@ -65,6 +72,13 @@ export const Profile = () => {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <SectionHeader title="My Profile" subtitle="Your ambassador details and account information." />
+
+      {copyMsg && (
+        <div className="p-3.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-300 flex items-center gap-2.5 text-sm animate-fade-in shadow-lg">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span className="font-medium">{copyMsg}</span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Left: Identity Card */}

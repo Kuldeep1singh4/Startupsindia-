@@ -2,8 +2,10 @@ import { useState, useEffect } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { Button } from "../components/Button"
 import { Card } from "../components/Card"
+import { Logo } from "../components/Logo"
 import { supabase } from "../lib/supabase"
-import { Eye, EyeOff, ChevronRight } from "lucide-react"
+import { Eye, EyeOff, ChevronRight, ArrowLeft } from "lucide-react"
+import { checkRateLimit } from "../lib/rateLimit"
 
 // India state → district → city data
 const INDIA_LOCATIONS: Record<string, Record<string, string[]>> = {
@@ -236,6 +238,14 @@ export const Registration = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    // Rate limit check: max 3 registration attempts per 2 minutes
+    const limit = checkRateLimit('registration_attempt', 3, 120_000, 120_000)
+    if (!limit.allowed) {
+      setError(limit.message || "Too many registration attempts. Please wait before trying again.")
+      return
+    }
+
     setLoading(true)
     setError("")
 
@@ -289,11 +299,21 @@ export const Registration = () => {
   return (
     <div className="min-h-screen bg-bg-dark flex items-center justify-center p-4 py-10">
       <div className="w-full max-w-2xl">
+        {/* Back to Home Button (Task 6) */}
+        <div className="mb-4">
+          <button
+            onClick={() => navigate('/')}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-muted hover:text-white transition-colors group"
+            aria-label="Back to landing page"
+          >
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+            <span>Back to Home</span>
+          </button>
+        </div>
+
         {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl md:text-4xl font-bold text-white">
-            Startups<span className="text-primary">India</span>
-          </h1>
+        <div className="text-center mb-8 flex flex-col items-center">
+          <Logo size="lg" to="/" className="mb-2" />
           <p className="text-text-muted mt-2">Ambassador Program Application</p>
         </div>
 
@@ -474,8 +494,9 @@ export const Registration = () => {
               />
               <span className="text-text-muted text-sm leading-relaxed">
                 I agree to the{' '}
-                <span className="text-primary">StartupsIndia Ambassador Program</span>{' '}
-                terms and conditions. I confirm that all information provided is accurate.
+                <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">
+                  StartupsIndia Ambassador Program terms and conditions
+                </a>. I confirm that all information provided is accurate.
               </span>
             </label>
 

@@ -4,7 +4,8 @@ import { Card } from "../../components/Card"
 import { Button } from "../../components/Button"
 import { Badge } from "../../components/Badge"
 import { Select, Input } from "../../components/FormControls"
-import { Shield, ShieldOff, Edit2, Trash2, Search, ChevronDown, ChevronUp, X } from "lucide-react"
+import { Shield, ShieldOff, Edit2, Trash2, Search, ChevronDown, ChevronUp, X, CheckCircle2 } from "lucide-react"
+import { ErrorAlert } from "../../components/ErrorAlert"
 
 type Ambassador = {
   id: string
@@ -27,68 +28,120 @@ export function AmbassadorMgmtView() {
   const [loading, setLoading] = useState(true)
   const [adminId, setAdminId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState('all')
+  const [locationFilter, setLocationFilter] = useState('all')
+  const [roleFilter, setRoleFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [editingAmb, setEditingAmb] = useState<Ambassador | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null)
 
   const fetchData = async () => {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      const { data: p } = await supabase.from('ambassadors').select('id').eq('user_id', user.id).single()
-      if (p) setAdminId(p.id)
+    setError(null)
+    try {
+      const { data: { user }, error: userErr } = await supabase.auth.getUser()
+      if (userErr) throw userErr
+      if (user) {
+        const { data: p, error: pErr } = await supabase.from('ambassadors').select('id').eq('user_id', user.id).single()
+        if (pErr) console.warn("Admin profile check note:", pErr.message)
+        if (p) setAdminId(p.id)
+      }
+      const { data, error: ambErr } = await supabase
+        .from('ambassadors')
+        .select('id, full_name, email, mobile_number, college_name, city, state, status, role, total_points, current_level, created_at')
+        .order('created_at', { ascending: false })
+      if (ambErr) throw ambErr
+      if (data) { setAmbassadors(data); setFiltered(data) }
+    } catch (err: any) {
+      console.error("Failed to fetch ambassadors:", err)
+      setError(err.message || "Failed to load ambassador records.")
+    } finally {
+      setLoading(false)
     }
-    const { data } = await supabase
-      .from('ambassadors')
-      .select('id, full_name, email, mobile_number, college_name, city, state, status, role, total_points, current_level, created_at')
-      .order('created_at', { ascending: false })
-    if (data) { setAmbassadors(data); setFiltered(data) }
-    setLoading(false)
   }
 
   useEffect(() => { fetchData() }, [])
 
-  // Client-side filter + search
+  // Client-side filter + search (including location filter and location search)
   useEffect(() => {
     let result = ambassadors
     if (statusFilter !== 'all') result = result.filter(a => a.status === statusFilter)
+    if (roleFilter !== 'all') result = result.filter(a => a.role === roleFilter)
+    if (locationFilter !== 'all') {
+      result = result.filter(a =>
+        a.state?.toLowerCase() === locationFilter.toLowerCase() ||
+        a.city?.toLowerCase() === locationFilter.toLowerCase()
+      )
+    }
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase()
+      const q = searchQuery.toLowerCase().trim()
       result = result.filter(a =>
         a.full_name?.toLowerCase().includes(q) ||
         a.email?.toLowerCase().includes(q) ||
-        a.college_name?.toLowerCase().includes(q)
+        a.college_name?.toLowerCase().includes(q) ||
+        a.city?.toLowerCase().includes(q) ||
+        a.state?.toLowerCase().includes(q)
       )
     }
     setFiltered(result)
-  }, [ambassadors, statusFilter, searchQuery])
+  }, [ambassadors, statusFilter, roleFilter, locationFilter, searchQuery])
 
   const handleStatusChange = async (amb: Ambassador, newStatus: string) => {
     setActionLoading(amb.id)
-    await supabase.from('ambassadors').update({ status: newStatus }).eq('id', amb.id)
-    setAmbassadors(prev => prev.map(a => a.id === amb.id ? { ...a, status: newStatus } : a))
-    setActionLoading(null)
+    setFeedbackMsg(null)
+    try {
+      const { error: updErr } = await supabase.from('ambassadors').update({ status: newStatus }).eq('id', amb.id)
+      if (updErr) throw updErr
+      setAmbassadors(prev => prev.map(a => a.id === amb.id ? { ...a, status: newStatus } : a))
+      setFeedbackMsg({ type: 'success', text: `Status for ${amb.full_name} updated to ${newStatus}.` })
+      setTimeout(() => setFeedbackMsg(null), 3500)
+    } catch (err: any) {
+      console.error("Status update error:", err)
+      setFeedbackMsg({ type: 'error', text: err.message || "Failed to update status." })
+    } finally {
+      setActionLoading(null)
+    }
   }
 
   const handleRoleToggle = async (amb: Ambassador) => {
     if (!adminId) return
     const newRole = amb.role === 'admin' ? 'ambassador' : 'admin'
     setActionLoading(amb.id)
-    const { error } = await supabase.from('ambassadors').update({ role: newRole }).eq('id', amb.id)
-    if (!error) {
+    setFeedbackMsg(null)
+    try {
+      const { error: roleErr } = await supabase.from('ambassadors').update({ role: newRole }).eq('id', amb.id)
+      if (roleErr) throw roleErr
+
       await supabase.from('admin_logs').insert([{ admin_id: adminId, target_ambassador_id: amb.id, old_role: amb.role, new_role: newRole }]).select()
       setAmbassadors(prev => prev.map(a => a.id === amb.id ? { ...a, role: newRole } : a))
+      setFeedbackMsg({ type: 'success', text: `${amb.full_name} is now designated as ${newRole === 'admin' ? 'Platform Administrator' : 'Ambassador'}.` })
+      setTimeout(() => setFeedbackMsg(null), 3500)
+    } catch (err: any) {
+      console.error("Role toggle error:", err)
+      setFeedbackMsg({ type: 'error', text: err.message || "Failed to toggle role." })
+    } finally {
+      setActionLoading(null)
     }
-    setActionLoading(null)
   }
 
   const handleDelete = async (id: string) => {
     if (!confirm('Permanently delete this ambassador record? This cannot be undone.')) return
     setActionLoading(id)
-    await supabase.from('ambassadors').delete().eq('id', id)
-    setAmbassadors(prev => prev.filter(a => a.id !== id))
-    setActionLoading(null)
+    setFeedbackMsg(null)
+    try {
+      const { error: delErr } = await supabase.from('ambassadors').delete().eq('id', id)
+      if (delErr) throw delErr
+      setAmbassadors(prev => prev.filter(a => a.id !== id))
+      setFeedbackMsg({ type: 'success', text: "Ambassador record deleted successfully." })
+      setTimeout(() => setFeedbackMsg(null), 3500)
+    } catch (err: any) {
+      console.error("Delete error:", err)
+      setFeedbackMsg({ type: 'error', text: err.message || "Failed to delete record." })
+    } finally {
+      setActionLoading(null)
+    }
   }
 
   const handleEditSave = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -99,9 +152,18 @@ export function AmbassadorMgmtView() {
       status: fd.get('status') as string,
       total_points: parseInt(fd.get('total_points') as string) || editingAmb.total_points,
     }
-    await supabase.from('ambassadors').update(updates).eq('id', editingAmb.id)
-    setAmbassadors(prev => prev.map(a => a.id === editingAmb.id ? { ...a, ...updates } : a))
-    setEditingAmb(null)
+    setFeedbackMsg(null)
+    try {
+      const { error: updErr } = await supabase.from('ambassadors').update(updates).eq('id', editingAmb.id)
+      if (updErr) throw updErr
+      setAmbassadors(prev => prev.map(a => a.id === editingAmb.id ? { ...a, ...updates } : a))
+      setFeedbackMsg({ type: 'success', text: `Details updated for ${editingAmb.full_name}.` })
+      setEditingAmb(null)
+      setTimeout(() => setFeedbackMsg(null), 3500)
+    } catch (err: any) {
+      console.error("Edit save error:", err)
+      setFeedbackMsg({ type: 'error', text: err.message || "Failed to save edits." })
+    }
   }
 
   const statusCounts = {
@@ -111,31 +173,116 @@ export function AmbassadorMgmtView() {
     Rejected: ambassadors.filter(a => a.status === 'Rejected').length,
   }
 
+  const availableLocations = Array.from(
+    new Set(
+      ambassadors
+        .flatMap(a => [a.state, a.city])
+        .filter(Boolean) as string[]
+    )
+  ).sort()
+
+  const hasActiveFilters = searchQuery || statusFilter !== 'all' || locationFilter !== 'all' || roleFilter !== 'all'
+
   return (
     <div className="space-y-4 animate-in fade-in duration-300">
-      {/* Search + Filter */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      {error && <ErrorAlert message={error} onRetry={fetchData} />}
+
+      {feedbackMsg && (
+        <div
+          className={`p-3.5 rounded-xl border flex items-center gap-2.5 text-xs sm:text-sm animate-fade-in ${
+            feedbackMsg.type === 'success'
+              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+              : 'bg-rose-500/10 border-rose-500/20 text-rose-300'
+          }`}
+        >
+          {feedbackMsg.type === 'success' ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          ) : (
+            <X className="w-4 h-4 text-rose-400 shrink-0" />
+          )}
+          <span>{feedbackMsg.text}</span>
+        </div>
+      )}
+
+      {/* Search + Filter Controls */}
+      <div className="flex flex-col lg:flex-row gap-2.5">
+        {/* Search Bar */}
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
           <input
             type="text"
-            placeholder="Search by name, email, or college..."
+            placeholder="Search by name, email, college, city, or state..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full bg-bg-dark border border-border-dark rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder-text-muted/50 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-colors"
+            className="w-full bg-bg-dark border border-border-dark rounded-xl pl-9 pr-9 py-2.5 text-sm text-white placeholder-text-muted/60 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-colors shadow-sm"
           />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-white p-1"
+              aria-label="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
-        <Select
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)}
-          className="sm:w-44"
-        >
-          <option value="all">All ({statusCounts.all})</option>
-          <option value="Pending">Pending ({statusCounts.Pending})</option>
-          <option value="Approved">Approved ({statusCounts.Approved})</option>
-          <option value="Rejected">Rejected ({statusCounts.Rejected})</option>
-        </Select>
+
+        {/* Filters Group */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {/* Location Filter */}
+          <Select
+            value={locationFilter}
+            onChange={e => setLocationFilter(e.target.value)}
+            className="text-xs"
+          >
+            <option value="all">📍 All Locations</option>
+            {availableLocations.map(loc => (
+              <option key={loc} value={loc}>{loc}</option>
+            ))}
+          </Select>
+
+          {/* Status Filter */}
+          <Select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            className="text-xs"
+          >
+            <option value="all">Status: All ({statusCounts.all})</option>
+            <option value="Pending">Pending ({statusCounts.Pending})</option>
+            <option value="Approved">Approved ({statusCounts.Approved})</option>
+            <option value="Rejected">Rejected ({statusCounts.Rejected})</option>
+          </Select>
+
+          {/* Role Filter */}
+          <Select
+            value={roleFilter}
+            onChange={e => setRoleFilter(e.target.value)}
+            className="text-xs col-span-2 sm:col-span-1"
+          >
+            <option value="all">Role: All</option>
+            <option value="ambassador">Ambassadors</option>
+            <option value="admin">Administrators</option>
+          </Select>
+        </div>
       </div>
+
+      {/* Filter status row */}
+      {hasActiveFilters && (
+        <div className="flex items-center justify-between text-xs text-text-muted px-1">
+          <span>Showing {filtered.length} of {ambassadors.length} records</span>
+          <button
+            onClick={() => {
+              setSearchQuery('')
+              setStatusFilter('all')
+              setLocationFilter('all')
+              setRoleFilter('all')
+            }}
+            className="text-primary hover:underline font-semibold"
+          >
+            Reset Filters
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <div className="space-y-2 animate-pulse">
@@ -195,7 +342,14 @@ export function AmbassadorMgmtView() {
                     <div><span className="font-semibold text-white">College:</span><br />{amb.college_name}</div>
                     <div><span className="font-semibold text-white">Location:</span><br />{[amb.city, amb.state].filter(Boolean).join(', ') || '—'}</div>
                     <div><span className="font-semibold text-white">Phone:</span><br />{amb.mobile_number || '—'}</div>
-                    <div><span className="font-semibold text-white">Level:</span><br />{amb.current_level || 'Bronze'}</div>
+                    <div>
+                      <span className="font-semibold text-white">Role / Level:</span><br />
+                      {amb.role === 'admin' ? (
+                        <span className="text-primary font-bold">Platform Administrator</span>
+                      ) : (
+                        amb.current_level || 'Bronze Ambassador'
+                      )}
+                    </div>
                     <div className="sm:hidden">
                       <span className="font-semibold text-white">Status:</span><br />
                       <Badge variant={amb.status === 'Approved' ? 'success' : amb.status === 'Pending' ? 'warning' : 'error'} className="mt-0.5">{amb.status}</Badge>
@@ -248,8 +402,8 @@ export function AmbassadorMgmtView() {
 
       {/* Edit Points modal */}
       {editingAmb && (
-        <div className="fixed inset-0 bg-black/80 flex items-end sm:items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <Card className="w-full max-w-sm bg-bg-card sm:rounded-2xl rounded-t-2xl">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm overflow-y-auto">
+          <Card className="w-full max-w-sm bg-bg-card rounded-2xl shadow-2xl my-auto border border-border-dark">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-bold text-white">Edit: {editingAmb.full_name}</h3>
               <button onClick={() => setEditingAmb(null)} className="text-text-muted hover:text-white">

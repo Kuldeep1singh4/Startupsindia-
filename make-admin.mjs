@@ -1,7 +1,22 @@
 import { createClient } from '@supabase/supabase-js';
+import fs from 'fs';
 
-const supabaseUrl = 'https://ashopwqkfxurdmjcntlm.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFzaG9wd3FrZnh1cmRtamNudGxtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzMTk1NDMsImV4cCI6MjEwNTg5NTU0M30.3SGlzA8h23wEpUDYcqOZoa7QbO0wBE2DwSCU3T5vblw';
+let supabaseUrl = process.env.VITE_SUPABASE_URL;
+let supabaseKey = process.env.VITE_SUPABASE_ANON_KEY;
+
+if ((!supabaseUrl || !supabaseKey) && fs.existsSync('.env')) {
+  const envContent = fs.readFileSync('.env', 'utf-8');
+  for (const line of envContent.split('\n')) {
+    const [k, ...v] = line.trim().split('=');
+    if (k === 'VITE_SUPABASE_URL') supabaseUrl = v.join('=');
+    if (k === 'VITE_SUPABASE_ANON_KEY') supabaseKey = v.join('=');
+  }
+}
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error("Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY environment variables.");
+  process.exit(1);
+}
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 

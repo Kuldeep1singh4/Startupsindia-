@@ -5,6 +5,8 @@ import { Button } from "../components/Button"
 import { Badge } from "../components/Badge"
 import { supabase } from "../lib/supabase"
 import { CheckCircle2, Clock, PlayCircle, XCircle, Upload, AlertCircle } from "lucide-react"
+import { ErrorAlert } from "../components/ErrorAlert"
+import { checkRateLimit } from "../lib/rateLimit"
 
 type Task = {
   id: string;
@@ -30,6 +32,9 @@ export const Tasks = () => {
   const [tasks, setTasks] = useState<Task[]>([])
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [ambassadorId, setAmbassadorId] = useState<string | null>(null)
   
   // Modal state
@@ -41,54 +46,77 @@ export const Tasks = () => {
 
   const fetchData = async () => {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    const { data: ambData } = await supabase
-      .from('ambassadors')
-      .select('id')
-      .eq('user_id', user.id)
-      .single()
-
-    if (ambData) {
-      setAmbassadorId(ambData.id)
-      
-      const { data: subs } = await supabase.from('task_submissions').select('*').eq('ambassador_id', ambData.id).order('created_at', { ascending: false })
-      if (subs) setSubmissions(subs)
-      
-      const subTaskIds = subs ? subs.map(s => s.task_id) : []
-
-      let query = supabase.from('tasks').select('*')
-      if (subTaskIds.length > 0) {
-        query = query.or(`is_active.eq.true,id.in.(${subTaskIds.join(',')})`)
-      } else {
-        query = query.eq('is_active', true)
+    setError(null)
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      if (userError) throw userError
+      if (!user) {
+        setLoading(false)
+        return
       }
-      
-      const { data: tasksData } = await query
-      if (tasksData) {
-        // Order logic: Pending/New first, then Approved. Within groups, newest first.
-        tasksData.sort((a, b) => {
-          const aSubs = subs?.filter(s => s.task_id === a.id) || []
-          const bSubs = subs?.filter(s => s.task_id === b.id) || []
-          
-          const aLatest = aSubs[0]
-          const bLatest = bSubs[0]
-          
-          const aIsDone = aLatest?.status === 'Approved' && !a.is_repeatable
-          const bIsDone = bLatest?.status === 'Approved' && !b.is_repeatable
-          
-          if (aIsDone && !bIsDone) return 1
-          if (!aIsDone && bIsDone) return -1
-          
-          // Order by recency
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        })
+
+      const { data: ambData, error: ambError } = await supabase
+        .from('ambassadors')
+        .select('id')
+        .eq('user_id', user.id)
+        .single()
+
+      if (ambError) throw ambError
+
+      if (ambData) {
+        setAmbassadorId(ambData.id)
         
-        setTasks(tasksData)
+        const { data: subs, error: subsError } = await supabase
+          .from('task_submissions')
+          .select('*')
+          .eq('ambassador_id', ambData.id)
+          .order('created_at', { ascending: false })
+        
+        if (subsError) throw subsError
+        if (subs) setSubmissions(subs)
+        
+        const subTaskIds = subs 
+          ? subs.map(s => s.task_id).filter((id): id is string => typeof id === 'string' && /^[0-9a-fA-F-]+$/.test(id)) 
+          : []
+
+        let query = supabase.from('tasks').select('*')
+        if (subTaskIds.length > 0) {
+          query = query.or(`is_active.eq.true,id.in.(${subTaskIds.join(',')})`)
+        } else {
+          query = query.eq('is_active', true)
+        }
+        
+        const { data: tasksData, error: tasksError } = await query
+        if (tasksError) throw tasksError
+
+        if (tasksData) {
+          // Order logic: Pending/New first, then Approved. Within groups, newest first.
+          tasksData.sort((a, b) => {
+            const aSubs = subs?.filter(s => s.task_id === a.id) || []
+            const bSubs = subs?.filter(s => s.task_id === b.id) || []
+            
+            const aLatest = aSubs[0]
+            const bLatest = bSubs[0]
+            
+            const aIsDone = aLatest?.status === 'Approved' && !a.is_repeatable
+            const bIsDone = bLatest?.status === 'Approved' && !b.is_repeatable
+            
+            if (aIsDone && !bIsDone) return 1
+            if (!aIsDone && bIsDone) return -1
+            
+            // Order by recency
+            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          })
+          
+          setTasks(tasksData)
+        }
       }
+    } catch (err: any) {
+      console.error("Failed to fetch tasks:", err)
+      setError(err.message || "Failed to load tasks. Please try again.")
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   useEffect(() => {
@@ -96,54 +124,80 @@ export const Tasks = () => {
   }, [])
 
   const handleFileUpload = async (e: any) => {
-    const file = e.target.files[0]
+    const file = e.target.files?.[0]
     if (!file) return
     
     setUploadingImage(true)
-    const fileExt = file.name.split('.').pop()
-    const fileName = `${Math.random()}.${fileExt}`
-    const filePath = `${ambassadorId}/${fileName}`
+    setSubmitError(null)
 
-    const { error: uploadError } = await supabase.storage
-      .from('proofs')
-      .upload(filePath, file)
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`
+      const filePath = `${ambassadorId}/${fileName}`
 
-    if (!uploadError) {
+      const { error: uploadError } = await supabase.storage
+        .from('proofs')
+        .upload(filePath, file)
+
+      if (uploadError) throw uploadError
+
       const { data } = supabase.storage.from('proofs').getPublicUrl(filePath)
       setProofData(data.publicUrl)
-    } else {
-      alert("Error uploading image: " + uploadError.message)
+    } catch (err: any) {
+      console.error("Upload error:", err)
+      setSubmitError(err.message || "Failed to upload image proof. Please try again.")
+    } finally {
+      setUploadingImage(false)
     }
-    setUploadingImage(false)
   }
 
   const handleSubmitProof = async (e: any) => {
     e.preventDefault()
     if (!activeTask || !ambassadorId) return
-    setSubmitting(true)
 
-    const latestSub = submissions.filter(s => s.task_id === activeTask.id)[0]
-    
-    if (latestSub && latestSub.status === 'Rejected' && !activeTask.is_repeatable) {
-      await supabase
-        .from('task_submissions')
-        .update({ proof_data: proofData, status: 'Pending', updated_at: new Date().toISOString() })
-        .eq('id', latestSub.id)
-    } else {
-      await supabase
-        .from('task_submissions')
-        .insert([{
-          ambassador_id: ambassadorId,
-          task_id: activeTask.id,
-          proof_data: proofData,
-          status: 'Pending'
-        }])
+    // Rate limit: max 5 submissions per 60 seconds
+    const limit = checkRateLimit(`task_submit_${ambassadorId}`, 5, 60_000, 30_000)
+    if (!limit.allowed) {
+      setSubmitError(limit.message || "Submissions rate limited. Please wait before submitting again.")
+      return
     }
-    
-    await fetchData()
-    setActiveTask(null)
-    setProofData("")
-    setSubmitting(false)
+
+    setSubmitting(true)
+    setSubmitError(null)
+
+    try {
+      const latestSub = submissions.filter(s => s.task_id === activeTask.id)[0]
+      
+      if (latestSub && latestSub.status === 'Rejected' && !activeTask.is_repeatable) {
+        const { error: updateErr } = await supabase
+          .from('task_submissions')
+          .update({ proof_data: proofData, status: 'Pending', updated_at: new Date().toISOString() })
+          .eq('id', latestSub.id)
+        if (updateErr) throw updateErr
+      } else {
+        const { error: insertErr } = await supabase
+          .from('task_submissions')
+          .insert([{
+            ambassador_id: ambassadorId,
+            task_id: activeTask.id,
+            proof_data: proofData,
+            status: 'Pending'
+          }])
+        if (insertErr) throw insertErr
+      }
+      
+      const taskName = activeTask.name
+      await fetchData()
+      setActiveTask(null)
+      setProofData("")
+      setSuccessMsg(`Task "${taskName}" submitted successfully! Your submission is now under review.`)
+      setTimeout(() => setSuccessMsg(null), 5000)
+    } catch (err: any) {
+      console.error("Submission error:", err)
+      setSubmitError(err.message || "Failed to submit task proof. Please try again.")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   if (loading) {
@@ -158,6 +212,15 @@ export const Tasks = () => {
   return (
     <div className="space-y-8 animate-in fade-in duration-500 relative">
       <SectionHeader title="My Tasks" subtitle="Complete assigned tasks to earn points and level up." />
+
+      {successMsg && (
+        <div className="p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-300 flex items-center gap-3 text-sm animate-fade-in shadow-lg">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span className="font-medium">{successMsg}</span>
+        </div>
+      )}
+
+      {error && <ErrorAlert message={error} onRetry={fetchData} className="mb-4" />}
       
       <div className="space-y-4">
         {tasks.length === 0 && <p className="text-text-muted">No tasks available right now.</p>}
@@ -221,8 +284,8 @@ export const Tasks = () => {
 
       {/* Task Submission Modal */}
       {activeTask && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 animate-in fade-in zoom-in-95 duration-200">
-          <Card className="w-full max-w-lg shadow-2xl relative bg-bg-card">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+          <Card className="w-full max-w-lg shadow-2xl relative bg-bg-card my-auto max-h-[90dvh] overflow-y-auto border border-border-dark">
             <button 
               onClick={() => setActiveTask(null)} 
               className="absolute top-4 right-4 text-text-muted hover:text-white"
@@ -232,6 +295,8 @@ export const Tasks = () => {
             <h2 className="text-2xl font-bold text-white mb-2">{activeTask.name}</h2>
             <p className="text-text-muted mb-6 text-sm">{activeTask.description}</p>
             
+            {submitError && <ErrorAlert message={submitError} className="mb-4" />}
+
             <form onSubmit={handleSubmitProof} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-white mb-2">

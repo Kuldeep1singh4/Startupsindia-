@@ -5,6 +5,7 @@ import { Badge } from "../components/Badge"
 import { Button } from "../components/Button"
 import { supabase } from "../lib/supabase"
 import { Trophy, Medal, Building2 } from "lucide-react"
+import { ErrorAlert } from "../components/ErrorAlert"
 
 type AmbassadorRank = {
   id: string
@@ -35,10 +36,12 @@ export const Leaderboard = () => {
   
   const [myProfile, setMyProfile] = useState<AmbassadorRank | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    const fetchLeaderboard = async () => {
-      setLoading(true)
+  const fetchLeaderboard = async () => {
+    setLoading(true)
+    setError(null)
+    try {
       const { data: { user } } = await supabase.auth.getUser()
       
       let profile = null
@@ -50,7 +53,7 @@ export const Leaderboard = () => {
 
       if (view === 'individual') {
         if (periodFilter === 'All Time') {
-          let query = supabase.from('ambassadors').select('id, full_name, college_name, current_level, total_points, state, district, city').eq('status', 'Approved').order('total_points', { ascending: false }).limit(100)
+          let query = supabase.from('ambassadors').select('id, full_name, college_name, current_level, total_points, state, district, city').eq('status', 'Approved').neq('role', 'admin').order('total_points', { ascending: false }).limit(100)
           if (profile && locationFilter !== 'India') {
             if (locationFilter === 'State') query = query.eq('state', profile.state)
             if (locationFilter === 'District') query = query.eq('district', profile.district)
@@ -117,10 +120,15 @@ export const Leaderboard = () => {
           }
         }
       }
-
+    } catch (err: any) {
+      console.error("Failed to fetch leaderboard:", err)
+      setError(err.message || "Failed to load leaderboard rankings.")
+    } finally {
       setLoading(false)
     }
+  }
 
+  useEffect(() => {
     fetchLeaderboard()
   }, [locationFilter, periodFilter, view])
 
@@ -137,6 +145,8 @@ export const Leaderboard = () => {
           </Button>
         </div>
       </div>
+
+      {error && <ErrorAlert message={error} onRetry={fetchLeaderboard} />}
 
       <Card className="flex flex-col sm:flex-row gap-4 p-4 border-t-4 border-t-primary">
         <div className="flex-1">
@@ -173,8 +183,8 @@ export const Leaderboard = () => {
           ))}
         </div>
       ) : view === 'individual' ? (
-        <div className="bg-bg-card border border-border-dark rounded-2xl overflow-hidden">
-          <table className="w-full text-left border-collapse">
+        <div className="bg-bg-card border border-border-dark rounded-2xl overflow-x-auto">
+          <table className="w-full min-w-[600px] text-left border-collapse">
             <thead>
               <tr className="border-b border-border-dark bg-bg-dark/50">
                 <th className="p-4 text-text-muted font-bold text-sm w-16 text-center">Rank</th>
@@ -213,8 +223,8 @@ export const Leaderboard = () => {
           </table>
         </div>
       ) : (
-        <div className="bg-bg-card border border-border-dark rounded-2xl overflow-hidden">
-          <table className="w-full text-left border-collapse">
+        <div className="bg-bg-card border border-border-dark rounded-2xl overflow-x-auto">
+          <table className="w-full min-w-[500px] text-left border-collapse">
             <thead>
               <tr className="border-b border-border-dark bg-bg-dark/50">
                 <th className="p-4 text-text-muted font-bold text-sm w-16 text-center">Rank</th>

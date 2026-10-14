@@ -4,7 +4,8 @@ import { Card } from "../../components/Card"
 import { Button } from "../../components/Button"
 import { Badge } from "../../components/Badge"
 import { Select, Input, Textarea } from "../../components/FormControls"
-import { Plus, Edit2, Trash2, ToggleLeft, ToggleRight, X } from "lucide-react"
+import { Plus, Edit2, Trash2, ToggleLeft, ToggleRight, X, CheckCircle2 } from "lucide-react"
+import { ErrorAlert } from "../../components/ErrorAlert"
 
 type Task = {
   id: string
@@ -28,12 +29,22 @@ export function TaskMgmtView() {
   const [editingTask, setEditingTask] = useState<Partial<Task> | null>(null)
   const [isNew, setIsNew] = useState(false)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null)
 
   const fetchTasks = async () => {
     setLoading(true)
-    const { data } = await supabase.from('tasks').select('*').order('created_at', { ascending: false })
-    if (data) setTasks(data)
-    setLoading(false)
+    setError(null)
+    try {
+      const { data, error: fetchErr } = await supabase.from('tasks').select('*').order('created_at', { ascending: false })
+      if (fetchErr) throw fetchErr
+      if (data) setTasks(data)
+    } catch (err: any) {
+      console.error("Failed to load tasks:", err)
+      setError(err.message || "Failed to load tasks.")
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => { fetchTasks() }, [])
@@ -55,32 +66,82 @@ export function TaskMgmtView() {
       is_repeatable: fd.get('is_repeatable') === 'true',
     }
 
-    if (isNew) {
-      await supabase.from('tasks').insert([payload])
-    } else if (editingTask.id) {
-      await supabase.from('tasks').update(payload).eq('id', editingTask.id)
+    setFeedbackMsg(null)
+    try {
+      if (isNew) {
+        const { error: insErr } = await supabase.from('tasks').insert([payload])
+        if (insErr) throw insErr
+        setFeedbackMsg({ type: 'success', text: "New task created successfully." })
+      } else if (editingTask.id) {
+        const { error: updErr } = await supabase.from('tasks').update(payload).eq('id', editingTask.id)
+        if (updErr) throw updErr
+        setFeedbackMsg({ type: 'success', text: "Task details updated successfully." })
+      }
+      setTimeout(() => setFeedbackMsg(null), 3500)
+      closeForm()
+      await fetchTasks()
+    } catch (err: any) {
+      console.error("Task save error:", err)
+      setFeedbackMsg({ type: 'error', text: err.message || "Failed to save task." })
     }
-    closeForm()
-    fetchTasks()
   }
 
   const handleToggleActive = async (task: Task) => {
     setActionLoading(task.id)
-    await supabase.from('tasks').update({ is_active: !task.is_active }).eq('id', task.id)
-    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, is_active: !t.is_active } : t))
-    setActionLoading(null)
+    setFeedbackMsg(null)
+    try {
+      const { error: togErr } = await supabase.from('tasks').update({ is_active: !task.is_active }).eq('id', task.id)
+      if (togErr) throw togErr
+      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, is_active: !t.is_active } : t))
+      setFeedbackMsg({ type: 'success', text: `Task marked as ${!task.is_active ? 'Active' : 'Inactive'}.` })
+      setTimeout(() => setFeedbackMsg(null), 3500)
+    } catch (err: any) {
+      console.error("Toggle error:", err)
+      setFeedbackMsg({ type: 'error', text: err.message || "Failed to toggle task active state." })
+    } finally {
+      setActionLoading(null)
+    }
   }
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this task? All submissions linked to it will be affected.')) return
     setActionLoading(id)
-    await supabase.from('tasks').delete().eq('id', id)
-    setTasks(prev => prev.filter(t => t.id !== id))
-    setActionLoading(null)
+    setFeedbackMsg(null)
+    try {
+      const { error: delErr } = await supabase.from('tasks').delete().eq('id', id)
+      if (delErr) throw delErr
+      setTasks(prev => prev.filter(t => t.id !== id))
+      setFeedbackMsg({ type: 'success', text: "Task deleted successfully." })
+      setTimeout(() => setFeedbackMsg(null), 3500)
+    } catch (err: any) {
+      console.error("Delete task error:", err)
+      setFeedbackMsg({ type: 'error', text: err.message || "Failed to delete task." })
+    } finally {
+      setActionLoading(null)
+    }
   }
 
   return (
     <div className="space-y-4 animate-in fade-in duration-300">
+      {error && <ErrorAlert message={error} onRetry={fetchTasks} />}
+
+      {feedbackMsg && (
+        <div
+          className={`p-3.5 rounded-xl border flex items-center gap-2.5 text-xs sm:text-sm animate-fade-in ${
+            feedbackMsg.type === 'success'
+              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+              : 'bg-rose-500/10 border-rose-500/20 text-rose-300'
+          }`}
+        >
+          {feedbackMsg.type === 'success' ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          ) : (
+            <X className="w-4 h-4 text-rose-400 shrink-0" />
+          )}
+          <span>{feedbackMsg.text}</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-text-muted">{tasks.length} task{tasks.length !== 1 ? 's' : ''} configured</p>
@@ -146,8 +207,8 @@ export function TaskMgmtView() {
 
       {/* Create/Edit form modal */}
       {editingTask && (
-        <div className="fixed inset-0 bg-black/80 flex items-end sm:items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <Card className="w-full max-w-lg bg-bg-card sm:rounded-2xl rounded-t-2xl max-h-[90dvh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm overflow-y-auto">
+          <Card className="w-full max-w-lg bg-bg-card rounded-2xl shadow-2xl my-auto max-h-[90dvh] overflow-y-auto border border-border-dark">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-base font-bold text-white">{isNew ? 'Create Task' : 'Edit Task'}</h3>
               <button onClick={closeForm} className="text-text-muted hover:text-white"><X className="w-5 h-5" /></button>
