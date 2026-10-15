@@ -4,10 +4,11 @@ import { Button } from "../../components/Button"
 import { Badge } from "../../components/Badge"
 import { Input, Textarea, Select } from "../../components/FormControls"
 import {
-  Bell, Plus, Trash2, X, CheckCircle2, Megaphone,
+  Bell, Plus, Trash2, CheckCircle2, Megaphone,
   AlertCircle, Gift, CheckSquare, Send
 } from "lucide-react"
 import { ErrorAlert } from "../../components/ErrorAlert"
+import { Modal } from "../../components/Modal"
 import {
   type AppNotification,
   fetchNotifications,
@@ -239,83 +240,73 @@ export function NotificationMgmtView() {
       )}
 
       {/* Creation Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-200">
-          <Card className="w-full max-w-lg bg-bg-card rounded-2xl shadow-2xl my-auto max-h-[90dvh] overflow-y-auto border border-border-dark p-6">
-            <div className="flex items-center justify-between mb-5 border-b border-border-dark pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
-                  <Send className="w-4 h-4" />
-                </div>
-                <h3 className="text-base font-bold text-white">Broadcast New Notification</h3>
-              </div>
-              <button onClick={handleCloseModal} className="text-text-muted hover:text-white p-1">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      <Modal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        title="Broadcast New Notification"
+        icon={<Send className="w-4 h-4 text-primary" />}
+        maxWidth="max-w-lg"
+      >
+        <form onSubmit={handleCreate} className="space-y-4">
+          <Input
+            label="Notification Title"
+            placeholder="e.g. New Campus Task Alert"
+            required
+            value={formData.title}
+            onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+          />
 
-            <form onSubmit={handleCreate} className="space-y-4">
-              <Input
-                label="Notification Title"
-                placeholder="e.g. New Campus Task Alert"
-                required
-                value={formData.title}
-                onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-              />
+          <Textarea
+            label="Message Content"
+            placeholder="Write the notification message to display to ambassadors..."
+            required
+            rows={4}
+            value={formData.message}
+            onChange={(e) => setFormData(prev => ({ ...prev, message: e.target.value }))}
+          />
 
-              <Textarea
-                label="Message Content"
-                placeholder="Write the notification message to display to ambassadors..."
-                required
-                rows={4}
-                value={formData.message}
-                onChange={(e) => setFormData(prev => ({ ...prev, message: e.target.value }))}
-              />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Select
+              label="Category / Priority"
+              value={formData.category}
+              onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value as any }))}
+            >
+              <option value="announcement">Announcement (General)</option>
+              <option value="task">Task Alert</option>
+              <option value="reward">Reward Update</option>
+              <option value="urgent">Urgent Alert</option>
+            </Select>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Select
-                  label="Category / Priority"
-                  value={formData.category}
-                  onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value as any }))}
-                >
-                  <option value="announcement">Announcement (General)</option>
-                  <option value="task">Task Alert</option>
-                  <option value="reward">Reward Update</option>
-                  <option value="urgent">Urgent Alert</option>
-                </Select>
+            <Select
+              label="Target Audience"
+              value={formData.target_audience}
+              onChange={(e) => setFormData(prev => ({ ...prev, target_audience: e.target.value as any }))}
+            >
+              <option value="all">All Ambassadors</option>
+              <option value="approved">Approved Ambassadors Only</option>
+              <option value="pending">Pending Applicants</option>
+              <option value="gold_plus">Gold Tier & Above</option>
+            </Select>
+          </div>
 
-                <Select
-                  label="Target Audience"
-                  value={formData.target_audience}
-                  onChange={(e) => setFormData(prev => ({ ...prev, target_audience: e.target.value as any }))}
-                >
-                  <option value="all">All Ambassadors</option>
-                  <option value="approved">Approved Ambassadors Only</option>
-                  <option value="pending">Pending Applicants</option>
-                  <option value="gold_plus">Gold Tier & Above</option>
-                </Select>
-              </div>
+          <Input
+            label="Action URL (Optional)"
+            placeholder="e.g. /tasks or /rewards"
+            value={formData.action_url}
+            onChange={(e) => setFormData(prev => ({ ...prev, action_url: e.target.value }))}
+          />
 
-              <Input
-                label="Action URL (Optional)"
-                placeholder="e.g. /tasks or /rewards"
-                value={formData.action_url}
-                onChange={(e) => setFormData(prev => ({ ...prev, action_url: e.target.value }))}
-              />
-
-              <div className="flex gap-2 justify-end pt-3 border-t border-border-dark">
-                <Button type="button" variant="ghost" size="sm" onClick={handleCloseModal}>
-                  Cancel
-                </Button>
-                <Button type="submit" size="sm" disabled={submitting} className="gap-1.5">
-                  <Send className="w-3.5 h-3.5" />
-                  {submitting ? "Pushing..." : "Push Notification"}
-                </Button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
+          <div className="flex gap-2 justify-end pt-3 border-t border-border-dark">
+            <Button type="button" variant="ghost" size="sm" onClick={handleCloseModal}>
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" disabled={submitting} className="gap-1.5">
+              <Send className="w-3.5 h-3.5" />
+              {submitting ? "Pushing..." : "Push Notification"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   )
 }

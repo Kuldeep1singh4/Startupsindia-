@@ -61,6 +61,9 @@ export function AdminPortal() {
     setActiveSection(id)
     setSearchParams({ tab: id })
     setSidebarOpen(false)
+    // Reset scroll to top on tab change
+    const el = document.querySelector('[data-admin-content]')
+    if (el) el.scrollTop = 0
   }
 
   return (
@@ -145,7 +148,7 @@ export function AdminPortal() {
         </div>
 
         {/* Section Content — ONLY this middle area scrolls */}
-        <div className="flex-1 min-h-0 p-4 md:p-6 overflow-y-auto pb-16">
+        <div data-scroll-container data-admin-content className="flex-1 min-h-0 p-4 md:p-6 overflow-y-auto pb-16">
           {activeSection === 'dashboard' && <AdminDashboardView />}
           {activeSection === 'verification' && <TaskVerificationView onCountChange={setPendingCount} />}
           {activeSection === 'ambassadors' && <AmbassadorMgmtView />}

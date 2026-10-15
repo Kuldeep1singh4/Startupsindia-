@@ -15,6 +15,7 @@ import { ResetPassword } from './pages/ResetPassword'
 import { NotFound } from './pages/NotFound'
 import { ErrorPage } from './pages/ErrorPage'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { ScrollToTop } from './components/ScrollToTop'
 
 // Ambassador pages
 import { Dashboard } from './pages/Dashboard'
@@ -32,6 +33,7 @@ function App() {
   return (
     <ErrorBoundary>
       <Router>
+        <ScrollToTop />
         <AuthProvider>
           <Routes>
             {/* ── Public Routes ────────────────────────────── */}

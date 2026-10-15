@@ -229,7 +229,7 @@ export const Referrals = () => {
             <div className="mt-4 p-4 rounded-xl bg-bg-dark border border-border-dark space-y-2">
               <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">Direct Registration Link</span>
               <div className="flex items-center gap-2">
-                <div className="flex-1 bg-bg-card/60 px-3 py-2 rounded-lg border border-border-dark truncate text-xs text-text-muted select-all">
+                <div className="flex-1 min-w-0 bg-bg-card/60 px-3 py-2 rounded-lg border border-border-dark truncate text-xs text-text-muted select-all">
                   {inviteLink || 'Generating unique link...'}
                 </div>
                 <Button

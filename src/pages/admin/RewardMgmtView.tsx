@@ -5,6 +5,8 @@ import { Button } from "../../components/Button"
 import { Input, Textarea } from "../../components/FormControls"
 import { Plus, Edit2, Trash2, Gift, X, CheckCircle2, Upload } from "lucide-react"
 import { ErrorAlert } from "../../components/ErrorAlert"
+import { compressImageToDataUrl } from "../../lib/imageCompression"
+import { Modal } from "../../components/Modal"
 
 type Reward = {
   id: string
@@ -71,22 +73,21 @@ export function RewardMgmtView() {
     setImagePreview(null)
   }
 
-  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
     setUploadingImage(true)
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = reader.result as string
-      setImagePreview(result)
+    try {
+      // Phase 10: Client-side compression before storing payload or uploading
+      const { dataUrl } = await compressImageToDataUrl(file, 'reward')
+      setImagePreview(dataUrl)
+    } catch (err: any) {
+      console.error("Failed to compress reward artwork:", err)
+      setFeedbackMsg({ type: 'error', text: "Failed to process reward image file." })
+    } finally {
       setUploadingImage(false)
     }
-    reader.onerror = () => {
-      setFeedbackMsg({ type: 'error', text: "Failed to read image file." })
-      setUploadingImage(false)
-    }
-    reader.readAsDataURL(file)
   }
 
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -265,134 +266,126 @@ export function RewardMgmtView() {
       )}
 
       {/* Reward Edit/Create Modal */}
-      {editing && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-200">
-          <Card className="w-full max-w-lg bg-bg-card rounded-2xl shadow-2xl my-auto max-h-[90dvh] overflow-y-auto border border-border-dark p-6">
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
-                  <Gift className="w-4 h-4" />
+      <Modal
+        isOpen={Boolean(editing)}
+        onClose={closeForm}
+        title={isNew ? 'Create New Reward' : 'Edit Reward'}
+        icon={<Gift className="w-4 h-4 text-primary" />}
+        maxWidth="max-w-lg"
+      >
+        {editing && (
+          <form onSubmit={handleSave} className="space-y-4">
+            {/* Image Upload / Preview Block */}
+            <div>
+              <label className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+                Reward Card Image
+              </label>
+              
+              {imagePreview ? (
+                <div className="relative border border-border-dark rounded-xl overflow-hidden mb-3 bg-bg-dark h-40 group">
+                  <img src={imagePreview} alt="Reward preview" className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => setImagePreview(null)}
+                    className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/70 text-rose-400 hover:bg-rose-500 hover:text-white transition-colors"
+                    title="Remove image"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  <div className="absolute bottom-2 left-2 px-2.5 py-1 rounded bg-black/70 text-xs text-white">
+                    Custom Image Attached
+                  </div>
                 </div>
-                <h3 className="text-lg font-bold text-white">{isNew ? 'Create New Reward' : 'Edit Reward'}</h3>
+              ) : (
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-border-dark hover:border-primary/50 rounded-xl p-6 text-center cursor-pointer transition-colors bg-bg-dark/50 mb-3 group"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center mx-auto mb-2 group-hover:scale-105 transition-transform">
+                    <Upload className="w-5 h-5" />
+                  </div>
+                  <p className="text-xs font-medium text-white mb-0.5">
+                    {uploadingImage ? "Processing image..." : "Upload Reward Artwork or Photo"}
+                  </p>
+                  <p className="text-[11px] text-text-muted">PNG, JPG, SVG or WEBP (Max 5MB)</p>
+                </div>
+              )}
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageFileChange}
+                className="hidden"
+              />
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-text-muted">or image URL:</span>
+                <input
+                  type="url"
+                  name="image_url"
+                  value={imagePreview || ''}
+                  onChange={(e) => setImagePreview(e.target.value)}
+                  placeholder="https://example.com/reward-image.jpg"
+                  className="flex-1 bg-bg-dark border border-border-dark rounded-xl px-3 py-2 text-xs text-white placeholder-text-muted/50 focus:outline-none focus:border-primary"
+                />
               </div>
-              <button onClick={closeForm} className="text-text-muted hover:text-white p-1">
-                <X className="w-5 h-5" />
-              </button>
             </div>
 
-            <form onSubmit={handleSave} className="space-y-4">
-              {/* Image Upload / Preview Block */}
-              <div>
-                <label className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
-                  Reward Card Image
-                </label>
-                
-                {imagePreview ? (
-                  <div className="relative border border-border-dark rounded-xl overflow-hidden mb-3 bg-bg-dark h-40 group">
-                    <img src={imagePreview} alt="Reward preview" className="w-full h-full object-cover" />
-                    <button
-                      type="button"
-                      onClick={() => setImagePreview(null)}
-                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/70 text-rose-400 hover:bg-rose-500 hover:text-white transition-colors"
-                      title="Remove image"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                    <div className="absolute bottom-2 left-2 px-2.5 py-1 rounded bg-black/70 text-xs text-white">
-                      Custom Image Attached
-                    </div>
-                  </div>
-                ) : (
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-border-dark hover:border-primary/50 rounded-xl p-6 text-center cursor-pointer transition-colors bg-bg-dark/50 mb-3 group"
-                  >
-                    <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center mx-auto mb-2 group-hover:scale-105 transition-transform">
-                      <Upload className="w-5 h-5" />
-                    </div>
-                    <p className="text-xs font-medium text-white mb-0.5">
-                      {uploadingImage ? "Processing image..." : "Upload Reward Artwork or Photo"}
-                    </p>
-                    <p className="text-[11px] text-text-muted">PNG, JPG, SVG or WEBP (Max 5MB)</p>
-                  </div>
-                )}
+            <Input
+              label="Reward Name"
+              name="name"
+              required
+              defaultValue={editing.name}
+              placeholder="e.g. StartupsIndia Official Hoodie"
+            />
 
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageFileChange}
-                  className="hidden"
-                />
+            <Textarea
+              label="Description"
+              name="description"
+              required
+              rows={2}
+              defaultValue={editing.description}
+              placeholder="Details about what the ambassador receives..."
+            />
 
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-text-muted">or image URL:</span>
-                  <input
-                    type="url"
-                    name="image_url"
-                    value={imagePreview || ''}
-                    onChange={(e) => setImagePreview(e.target.value)}
-                    placeholder="https://example.com/reward-image.jpg"
-                    className="flex-1 bg-bg-dark border border-border-dark rounded-xl px-3 py-2 text-xs text-white placeholder-text-muted/50 focus:outline-none focus:border-primary"
-                  />
-                </div>
-              </div>
-
+            <div className="grid grid-cols-2 gap-3">
               <Input
-                label="Reward Name"
-                name="name"
+                label="Required Points"
+                name="required_points"
+                type="number"
                 required
-                defaultValue={editing.name}
-                placeholder="e.g. StartupsIndia Official Hoodie"
+                min={0}
+                defaultValue={editing.required_points ?? 0}
               />
-
-              <Textarea
-                label="Description"
-                name="description"
-                required
-                rows={2}
-                defaultValue={editing.description}
-                placeholder="Details about what the ambassador receives..."
-              />
-
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label="Required Points"
-                  name="required_points"
-                  type="number"
-                  required
-                  min={0}
-                  defaultValue={editing.required_points ?? 0}
-                />
-                <Input
-                  label="Stock Count"
-                  name="stock"
-                  type="number"
-                  required
-                  min={0}
-                  defaultValue={editing.stock ?? editing.quantity ?? 10}
-                />
-              </div>
-
               <Input
-                label="Required Level"
-                name="required_level"
-                defaultValue={editing.required_level || 'Bronze'}
-                placeholder="e.g. Bronze, Silver, Gold, Platinum, Diamond, National"
+                label="Stock Count"
+                name="stock"
+                type="number"
+                required
+                min={0}
+                defaultValue={editing.stock ?? editing.quantity ?? 10}
               />
+            </div>
 
-              <div className="flex gap-2 justify-end pt-3 border-t border-border-dark">
-                <Button type="button" variant="ghost" size="sm" onClick={closeForm}>
-                  Cancel
-                </Button>
-                <Button type="submit" size="sm" className="gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> {isNew ? 'Create Reward' : 'Save Changes'}
-                </Button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
+            <Input
+              label="Required Level"
+              name="required_level"
+              defaultValue={editing.required_level || 'Bronze'}
+              placeholder="e.g. Bronze, Silver, Gold, Platinum, Diamond, National"
+            />
+
+            <div className="flex gap-2 justify-end pt-3 border-t border-border-dark">
+              <Button type="button" variant="ghost" size="sm" onClick={closeForm}>
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" className="gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" /> {isNew ? 'Create Reward' : 'Save Changes'}
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
     </div>
   )
 }

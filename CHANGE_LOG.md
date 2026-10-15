@@ -58,8 +58,36 @@
 
 ---
 
+## E. Phase 10 — Storage Optimization & UI Fixes
+
+- [x] E1. Client-side Image/File Compression utility (`src/lib/imageCompression.ts`):
+  - Shared reusable compression using `browser-image-compression`.
+  - Max dimension cap of 1920px (800px for avatars/thumbnails).
+  - Target max file size 300–500KB (<=100KB for avatars).
+  - Automatic conversion to WebP format where supported with graceful fallback.
+  - Passes through non-image files (e.g. PDFs) without raster compression.
+  - Integrated across all upload points: `Tasks.tsx` (task proof upload to Supabase Storage), `RewardMgmtView.tsx` (reward artwork), `CertificateMgmtView.tsx` (certificate template), `LevelMgmtView.tsx` (tier badge), and `Profile.tsx` (avatar photo).
+- [x] E2. Level Config Page redesign & clipping fix (`src/pages/admin/LevelMgmtView.tsx`):
+  - Fixed visual clipping end-to-end; upgraded layout to an expansive full-screen responsive grid with summary KPI cards.
+  - Investigated and explained the "Add Image" option: confirmed accidental copy-paste duplication of Certificate template upload logic; cleaned up and converted into an optional "Level Badge / Tier Icon" with avatar compression.
+  - Fixed modal height with internal scrolling body and fixed footer so forms/buttons never get cut off.
+- [x] E3. Terms & Conditions page header (`src/pages/Terms.tsx`):
+  - Removed sticky positioning so the top bar scrolls naturally with the main page body; added official StartupsIndia `Logo`.
+- [x] E4. Page Load Scroll Position restoration (`src/components/ScrollToTop.tsx`):
+  - Restores scroll position to (0,0) on every route or search query change for window, document body, and dashboard scroll containers (`data-scroll-container`).
+- [x] E5. Mobile & Tablet Overflow Audit & Fixes:
+  - `Button.tsx`: replaced fixed heights with `min-h` responsive padding, `max-w-full`, and `break-words`.
+  - `Badge.tsx`: added `max-w-full` and `truncate`.
+  - `AppTopbar.tsx`: added `max-w-[calc(100vw-1.5rem)]` on notifications and user menu dropdowns.
+  - `Referrals.tsx`: added `min-w-0` to referral link and code containers.
+  - `AmbassadorMgmtView.tsx`: added `break-words` and `min-w-0` across user details and mobile badges.
+  - `Certificates.tsx`: ensured locked certificate button labels and icons truncate and wrap cleanly without expanding beyond card boundaries.
+
+---
+
 ## Reference Assets Provided
 - StartupsIndia logo/wordmark image (to replace text logo — A10)
 - Screenshot: overlapping tabs issue (A9)
 - Screenshots: mobile UI compression issue (A20)
+
 

@@ -3,32 +3,52 @@ import { supabase } from "../../lib/supabase"
 import { Card } from "../../components/Card"
 import { Button } from "../../components/Button"
 import { Input } from "../../components/FormControls"
-import { Plus, Edit2, Trash2, X, CheckCircle2, Upload, Award } from "lucide-react"
+import {
+  Plus, Edit2, Trash2, X, CheckCircle2, Upload,
+  Award, Layers, ShieldCheck, TrendingUp
+} from "lucide-react"
 import { ErrorAlert } from "../../components/ErrorAlert"
+import { compressImageToDataUrl } from "../../lib/imageCompression"
+import { Modal } from "../../components/Modal"
 
 type Level = {
   id: string
   name: string
   designation: string
   min_points: number
-  certificate?: string | null
   badge?: string | null
+  certificate?: string | null
 }
 
-const BLANK: Omit<Level, 'id'> = { name: '', designation: '', min_points: 0, certificate: '', badge: '' }
+const BLANK: Omit<Level, 'id'> = {
+  name: '',
+  designation: '',
+  min_points: 0,
+  badge: '',
+  certificate: ''
+}
+
+const DEFAULT_EMOJIS: Record<string, string> = {
+  'Bronze': '🥉',
+  'Silver': '🥈',
+  'Gold': '🥇',
+  'Platinum': '💠',
+  'Diamond': '💎',
+  'National': '🏅'
+}
 
 export function LevelMgmtView() {
   const [levels, setLevels] = useState<Level[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<Partial<Level> | null>(null)
   const [isNew, setIsNew] = useState(false)
-  const [certPreview, setCertPreview] = useState<string | null>(null)
-  const [uploadingCert, setUploadingCert] = useState(false)
+  const [badgePreview, setBadgePreview] = useState<string | null>(null)
+  const [compressing, setCompressing] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null)
 
-  const fetch = async () => {
+  const fetchLevels = async () => {
     setLoading(true)
     setError(null)
     try {
@@ -46,55 +66,57 @@ export function LevelMgmtView() {
     }
   }
 
-  useEffect(() => { fetch() }, [])
+  useEffect(() => {
+    fetchLevels()
+  }, [])
 
   const openNew = () => {
     setIsNew(true)
     setEditing({ ...BLANK })
-    setCertPreview(null)
+    setBadgePreview(null)
   }
 
   const openEdit = (lvl: Level) => {
     setIsNew(false)
     setEditing({ ...lvl })
-    setCertPreview(lvl.certificate || lvl.badge || null)
+    setBadgePreview(lvl.badge || lvl.certificate || null)
   }
 
   const closeForm = () => {
     setEditing(null)
     setIsNew(false)
-    setCertPreview(null)
+    setBadgePreview(null)
   }
 
-  const handleCertFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Client-side compressed badge icon upload (Phase 10: 'avatar' profile, max 800px, WebP, <= 100KB)
+  const handleBadgeFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    setUploadingCert(true)
-    const reader = new FileReader()
-    reader.onload = () => {
-      setCertPreview(reader.result as string)
-      setUploadingCert(false)
+    setCompressing(true)
+    try {
+      const { dataUrl } = await compressImageToDataUrl(file, 'avatar')
+      setBadgePreview(dataUrl)
+    } catch (err: any) {
+      console.error("Failed to compress badge icon:", err)
+      setFeedbackMsg({ type: 'error', text: "Failed to process badge image. Please try again." })
+    } finally {
+      setCompressing(false)
     }
-    reader.onerror = () => {
-      setFeedbackMsg({ type: 'error', text: "Failed to read certificate image file." })
-      setUploadingCert(false)
-    }
-    reader.readAsDataURL(file)
   }
 
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!editing) return
     const fd = new FormData(e.currentTarget)
-    const certVal = certPreview || (fd.get('certificate_url') as string) || null
+    const badgeVal = badgePreview || (fd.get('badge_url') as string) || null
 
     const payload: any = {
-      name: fd.get('name') as string,
-      designation: fd.get('designation') as string,
+      name: (fd.get('name') as string).trim(),
+      designation: (fd.get('designation') as string).trim(),
       min_points: parseInt(fd.get('min_points') as string) || 0,
-      certificate: certVal,
-      badge: certVal,
+      badge: badgeVal,
+      certificate: badgeVal,
     }
 
     setFeedbackMsg(null)
@@ -102,13 +124,13 @@ export function LevelMgmtView() {
       if (isNew) {
         const { error: insErr } = await supabase.from('levels_config').insert([payload])
         if (insErr) {
-          // If certificate column is not defined, retry with basic fields
+          // If badge/certificate column is not defined in older schema, retry with core fields
           delete payload.certificate
           delete payload.badge
           const { error: retryErr } = await supabase.from('levels_config').insert([payload])
           if (retryErr) throw retryErr
         }
-        setFeedbackMsg({ type: 'success', text: `Level tier "${payload.name}" added successfully.` })
+        setFeedbackMsg({ type: 'success', text: `Level tier "${payload.name}" created successfully!` })
       } else if (editing.id) {
         const { error: updErr } = await supabase.from('levels_config').update(payload).eq('id', editing.id)
         if (updErr) {
@@ -117,25 +139,25 @@ export function LevelMgmtView() {
           const { error: retryErr } = await supabase.from('levels_config').update(payload).eq('id', editing.id)
           if (retryErr) throw retryErr
         }
-        setFeedbackMsg({ type: 'success', text: `Level tier "${payload.name}" updated successfully.` })
+        setFeedbackMsg({ type: 'success', text: `Level tier "${payload.name}" updated successfully!` })
       }
       setTimeout(() => setFeedbackMsg(null), 3500)
       closeForm()
-      await fetch()
+      await fetchLevels()
     } catch (err: any) {
       console.error("Level save error:", err)
       setFeedbackMsg({ type: 'error', text: err.message || "Failed to save level." })
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this level?')) return
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete the "${name}" level tier?`)) return
     setFeedbackMsg(null)
     try {
       const { error: delErr } = await supabase.from('levels_config').delete().eq('id', id)
       if (delErr) throw delErr
       setLevels(prev => prev.filter(l => l.id !== id))
-      setFeedbackMsg({ type: 'success', text: "Level deleted successfully." })
+      setFeedbackMsg({ type: 'success', text: `Level "${name}" removed.` })
       setTimeout(() => setFeedbackMsg(null), 3500)
     } catch (err: any) {
       console.error("Level delete error:", err)
@@ -143,15 +165,13 @@ export function LevelMgmtView() {
     }
   }
 
-  const EMOJIS: Record<string, string> = {
-    'Bronze': '🥉', 'Silver': '🥈', 'Gold': '🥇',
-    'Platinum': '💠', 'Diamond': '💎', 'National': '🏅'
-  }
+  const maxPoints = levels.length > 0 ? Math.max(...levels.map(l => l.min_points)) : 50000
 
   return (
-    <div className="space-y-5 animate-in fade-in duration-300 pb-16">
-      {error && <ErrorAlert message={error} onRetry={fetch} />}
+    <div className="w-full max-w-full space-y-6 animate-in fade-in duration-300 pb-20">
+      {error && <ErrorAlert message={error} onRetry={fetchLevels} />}
 
+      {/* Success / Error Toast */}
       {feedbackMsg && (
         <div
           className={`p-3.5 rounded-xl border flex items-center gap-2.5 text-xs sm:text-sm animate-fade-in ${
@@ -169,7 +189,8 @@ export function LevelMgmtView() {
         </div>
       )}
 
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      {/* Header Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <Award className="w-5 h-5 text-primary" />
@@ -184,141 +205,231 @@ export function LevelMgmtView() {
         </Button>
       </div>
 
+      {/* Summary KPI Strip — Spans full screen width */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card className="p-4 border-border-dark bg-bg-card/70 flex flex-col justify-between">
+          <p className="text-text-muted text-xs font-medium">Configured Tiers</p>
+          <div className="flex items-baseline gap-2 mt-2">
+            <span className="text-2xl font-extrabold text-white">{levels.length}</span>
+            <span className="text-xs text-primary font-semibold">Active Levels</span>
+          </div>
+        </Card>
+        <Card className="p-4 border-border-dark bg-bg-card/70 flex flex-col justify-between">
+          <p className="text-text-muted text-xs font-medium">Starting Threshold</p>
+          <div className="flex items-baseline gap-2 mt-2">
+            <span className="text-2xl font-extrabold text-white">0</span>
+            <span className="text-xs text-text-muted">Bronze Base</span>
+          </div>
+        </Card>
+        <Card className="p-4 border-border-dark bg-bg-card/70 flex flex-col justify-between">
+          <p className="text-text-muted text-xs font-medium">Top Milestone</p>
+          <div className="flex items-baseline gap-2 mt-2">
+            <span className="text-2xl font-extrabold text-primary">{maxPoints.toLocaleString()}</span>
+            <span className="text-xs text-text-muted">pts max</span>
+          </div>
+        </Card>
+        <Card className="p-4 border-border-dark bg-bg-card/70 flex flex-col justify-between">
+          <p className="text-text-muted text-xs font-medium">Tier System</p>
+          <div className="flex items-center gap-1.5 mt-2 text-xs font-bold text-emerald-400">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" /> Auto-Promoting
+          </div>
+        </Card>
+      </div>
+
+      {/* Level Tiers Responsive Full-Screen Grid */}
       {loading ? (
-        <div className="space-y-2 animate-pulse">
-          {[...Array(6)].map((_, i) => <div key={i} className="h-16 bg-bg-card rounded-xl" />)}
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {levels.map((level, idx) => (
-            <Card key={level.id} className="p-4 flex items-center gap-4 hover:border-border-dark/60 transition-colors">
-              {level.certificate ? (
-                <div className="w-12 h-12 rounded-xl overflow-hidden border border-border-dark bg-bg-dark shrink-0">
-                  <img src={level.certificate} alt={level.name} className="w-full h-full object-cover" />
-                </div>
-              ) : (
-                <div className="w-12 h-12 bg-primary/10 border border-primary/20 rounded-xl flex items-center justify-center text-xl shrink-0">
-                  {EMOJIS[level.name] || `${idx + 1}`}
-                </div>
-              )}
-
-              <div className="flex-1 min-w-0">
-                <div className="flex items-baseline gap-2">
-                  <span className="font-bold text-white text-sm">{level.name}</span>
-                  <span className="text-primary text-xs font-bold">{level.min_points.toLocaleString()} pts</span>
-                </div>
-                <p className="text-text-muted text-xs">{level.designation}</p>
-              </div>
-
-              <div className="flex gap-1 shrink-0">
-                <button
-                  onClick={() => openEdit(level)}
-                  className="p-2 text-text-muted hover:text-white rounded-lg hover:bg-white/5 transition-colors"
-                  title="Edit Level"
-                >
-                  <Edit2 className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => handleDelete(level.id)}
-                  className="p-2 text-text-muted hover:text-red-400 rounded-lg hover:bg-red-500/8 transition-colors"
-                  title="Delete Level"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </Card>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 animate-pulse">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="h-44 bg-bg-card rounded-2xl border border-border-dark" />
           ))}
         </div>
-      )}
+      ) : levels.length === 0 ? (
+        <Card className="text-center py-12 border-dashed border-border-dark">
+          <Layers className="w-10 h-10 text-text-muted/40 mx-auto mb-3" />
+          <p className="text-white font-semibold">No Level Tiers Configured</p>
+          <p className="text-xs text-text-muted mt-1 mb-4">Click below to create your first progression level.</p>
+          <Button size="sm" onClick={openNew} className="gap-1.5">
+            <Plus className="w-3.5 h-3.5" /> Add Level Tier
+          </Button>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {levels.map((level, idx) => {
+            const hasCustomBadge = Boolean(level.badge || level.certificate)
+            const badgeSrc = level.badge || level.certificate
 
-      {/* Level Modal with Certificate Image Upload */}
-      {editing && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm overflow-y-auto">
-          <Card className="w-full max-w-md bg-bg-card rounded-2xl shadow-2xl my-auto max-h-[90dvh] overflow-y-auto border border-border-dark p-6">
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
-                  <Award className="w-4 h-4" />
+            return (
+              <Card
+                key={level.id}
+                className="p-5 flex flex-col justify-between border-border-dark hover:border-primary/40 bg-bg-card/80 transition-all group relative overflow-hidden"
+              >
+                {/* Top Row: Badge, Name, Points */}
+                <div className="flex items-start gap-4">
+                  {/* Badge Thumbnail or Tier Emoji */}
+                  {hasCustomBadge && badgeSrc ? (
+                    <div className="w-14 h-14 rounded-2xl overflow-hidden border border-border-dark bg-bg-dark shrink-0 shadow-md">
+                      <img src={badgeSrc} alt={level.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                    </div>
+                  ) : (
+                    <div className="w-14 h-14 bg-primary/10 border border-primary/25 rounded-2xl flex items-center justify-center text-2xl shrink-0 group-hover:scale-105 transition-transform shadow-inner">
+                      {DEFAULT_EMOJIS[level.name] || `${idx + 1}`}
+                    </div>
+                  )}
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 justify-between">
+                      <h3 className="font-bold text-white text-base truncate">{level.name}</h3>
+                      <span className="text-[10px] font-mono uppercase bg-primary/15 text-primary border border-primary/30 px-2 py-0.5 rounded-full font-bold shrink-0">
+                        Tier {idx + 1}
+                      </span>
+                    </div>
+
+                    <p className="text-primary text-xs font-bold mt-0.5">
+                      {level.min_points.toLocaleString()} Points Threshold
+                    </p>
+
+                    <p className="text-text-muted text-xs mt-1.5 line-clamp-2 leading-relaxed">
+                      {level.designation}
+                    </p>
+                  </div>
                 </div>
-                <h3 className="text-base font-bold text-white">{isNew ? 'Add Level Tier' : 'Edit Level Tier'}</h3>
-              </div>
-              <button onClick={closeForm} className="text-text-muted hover:text-white p-1">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            <form onSubmit={handleSave} className="space-y-4">
-              {/* Certificate Image Upload */}
-              <div>
-                <label className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
-                  Certificate Template / Artwork
-                </label>
+                {/* Bottom Row: Actions & Milestone Progress Indicator */}
+                <div className="pt-4 mt-4 border-t border-border-dark/60 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-1.5 text-[11px] text-text-muted">
+                    <TrendingUp className="w-3.5 h-3.5 text-primary shrink-0" />
+                    <span>Req. {level.min_points} pts</span>
+                  </div>
 
-                {certPreview ? (
-                  <div className="relative border border-border-dark rounded-xl overflow-hidden mb-3 bg-bg-dark h-36 group">
-                    <img src={certPreview} alt="Certificate preview" className="w-full h-full object-cover" />
+                  <div className="flex items-center gap-1">
                     <button
-                      type="button"
-                      onClick={() => setCertPreview(null)}
-                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/70 text-rose-400 hover:bg-rose-500 hover:text-white transition-colors"
-                      title="Remove image"
+                      onClick={() => openEdit(level)}
+                      className="p-2 text-text-muted hover:text-white rounded-lg hover:bg-white/5 transition-colors"
+                      title="Edit Level Tier"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(level.id, level.name)}
+                      className="p-2 text-text-muted hover:text-rose-400 rounded-lg hover:bg-rose-500/10 transition-colors"
+                      title="Delete Level Tier"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
-                    <div className="absolute bottom-2 left-2 px-2.5 py-1 rounded bg-black/70 text-xs text-white">
-                      Custom Certificate Artwork Attached
-                    </div>
                   </div>
-                ) : (
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-border-dark hover:border-primary/50 rounded-xl p-5 text-center cursor-pointer transition-colors bg-bg-dark/50 mb-3 group"
-                  >
-                    <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center mx-auto mb-2 group-hover:scale-105 transition-transform">
-                      <Upload className="w-4 h-4" />
-                    </div>
-                    <p className="text-xs font-medium text-white mb-0.5">
-                      {uploadingCert ? "Reading image..." : "Upload Certificate Template Image"}
-                    </p>
-                    <p className="text-[11px] text-text-muted">PNG, JPG, SVG or WEBP (Max 5MB)</p>
-                  </div>
-                )}
-
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleCertFileChange}
-                  className="hidden"
-                />
-
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-text-muted">or URL:</span>
-                  <input
-                    type="url"
-                    name="certificate_url"
-                    value={certPreview || ''}
-                    onChange={(e) => setCertPreview(e.target.value)}
-                    placeholder="https://example.com/certificate-template.png"
-                    className="flex-1 bg-bg-dark border border-border-dark rounded-xl px-3 py-2 text-xs text-white placeholder-text-muted/50 focus:outline-none focus:border-primary"
-                  />
                 </div>
-              </div>
-
-              <Input label="Level Name" name="name" required defaultValue={editing.name} placeholder="e.g. Silver" />
-              <Input label="Designation" name="designation" required defaultValue={editing.designation} placeholder="e.g. Senior Campus Ambassador" />
-              <Input label="Minimum Points" name="min_points" type="number" required min={0} defaultValue={editing.min_points ?? 0} />
-
-              <div className="flex gap-2 justify-end pt-3 border-t border-border-dark">
-                <Button type="button" variant="ghost" size="sm" onClick={closeForm}>Cancel</Button>
-                <Button type="submit" size="sm" className="gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> {isNew ? 'Create Level' : 'Save Changes'}
-                </Button>
-              </div>
-            </form>
-          </Card>
+              </Card>
+            )
+          })}
         </div>
       )}
+
+      {/* Level Tier Modal — Guaranteed Centered and Unclipped */}
+      <Modal
+        isOpen={Boolean(editing)}
+        onClose={closeForm}
+        title={isNew ? 'Create Level Tier' : `Edit Tier: ${editing?.name || ''}`}
+        description="Configure points threshold, designation, and badge icon."
+        icon={<Award className="w-4 h-4 text-primary" />}
+        maxWidth="max-w-lg"
+      >
+        {editing && (
+          <form onSubmit={handleSave} className="space-y-4">
+            {/* Optional Tier Badge / Icon Upload */}
+            <div>
+              <label className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+                Level Badge / Icon (Optional)
+              </label>
+
+              {badgePreview ? (
+                <div className="relative border border-border-dark rounded-xl overflow-hidden mb-3 bg-bg-dark h-32 flex items-center justify-center group">
+                  <img src={badgePreview} alt="Badge preview" className="max-h-full max-w-full object-contain p-2" />
+                  <button
+                    type="button"
+                    onClick={() => setBadgePreview(null)}
+                    className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/70 text-rose-400 hover:bg-rose-500 hover:text-white transition-colors"
+                    title="Remove custom icon"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/80 text-[10px] text-white">
+                    Custom Badge Icon Attached
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-border-dark hover:border-primary/50 rounded-xl p-4 text-center cursor-pointer transition-colors bg-bg-dark/40 mb-3 group"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center mx-auto mb-1.5 group-hover:scale-105 transition-transform">
+                    <Upload className="w-4 h-4" />
+                  </div>
+                  <p className="text-xs font-medium text-white mb-0.5">
+                    {compressing ? "Compressing WebP badge..." : "Upload Level Badge / Medal Icon"}
+                  </p>
+                  <p className="text-[11px] text-text-muted">PNG, JPG, or WEBP (Auto-optimized to &le;100KB)</p>
+                </div>
+              )}
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleBadgeFileChange}
+                className="hidden"
+              />
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-text-muted shrink-0">or Icon URL:</span>
+                <input
+                  type="url"
+                  name="badge_url"
+                  value={badgePreview || ''}
+                  onChange={(e) => setBadgePreview(e.target.value)}
+                  placeholder="https://example.com/badge-icon.png"
+                  className="flex-1 bg-bg-dark border border-border-dark rounded-xl px-3 py-1.5 text-xs text-white placeholder-text-muted/40 focus:outline-none focus:border-primary"
+                />
+              </div>
+            </div>
+
+            <Input
+              label="Level Name"
+              name="name"
+              required
+              defaultValue={editing.name}
+              placeholder="e.g. Bronze, Silver, Gold, Platinum"
+            />
+
+            <Input
+              label="Designation / Title"
+              name="designation"
+              required
+              defaultValue={editing.designation}
+              placeholder="e.g. Campus Ambassador, Senior Campus Ambassador"
+            />
+
+            <Input
+              label="Minimum Points Threshold"
+              name="min_points"
+              type="number"
+              required
+              min={0}
+              defaultValue={editing.min_points ?? 0}
+              placeholder="0"
+            />
+
+            <div className="flex gap-2 justify-end pt-3 border-t border-border-dark">
+              <Button type="button" variant="ghost" size="sm" onClick={closeForm}>
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" className="gap-1.5" disabled={compressing}>
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                {isNew ? 'Create Level Tier' : 'Save Changes'}
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
     </div>
   )
 }

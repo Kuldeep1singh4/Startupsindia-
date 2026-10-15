@@ -5,6 +5,7 @@ import { Button } from "../../components/Button"
 import { Badge } from "../../components/Badge"
 import { CheckCircle2, XCircle, ExternalLink } from "lucide-react"
 import { ErrorAlert } from "../../components/ErrorAlert"
+import { Modal } from "../../components/Modal"
 
 type Submission = {
   id: string
@@ -240,40 +241,36 @@ export function TaskVerificationView({ onCountChange }: { onCountChange?: (n: nu
         </div>
       )}
 
-      {/* Reject modal */}
-      {rejectingId && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm overflow-y-auto">
-          <Card className="w-full max-w-md shadow-2xl bg-bg-card rounded-2xl my-auto border border-border-dark">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-bold text-white">Reject Submission</h3>
-              <button onClick={() => setRejectingId(null)} className="text-text-muted hover:text-white transition-colors">
-                <XCircle className="w-5 h-5" />
-              </button>
-            </div>
-            <form onSubmit={handleRejectSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-1.5">
-                  Rejection Reason *
-                </label>
-                <textarea
-                  required
-                  value={rejectionReason}
-                  onChange={e => setRejectionReason(e.target.value)}
-                  placeholder="e.g. The screenshot is blurry or does not show required content."
-                  rows={3}
-                  className="w-full bg-bg-dark border border-border-dark rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-text-muted/50 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 resize-none"
-                />
-              </div>
-              <div className="flex gap-2 justify-end">
-                <Button type="button" variant="ghost" size="sm" onClick={() => setRejectingId(null)}>Cancel</Button>
-                <Button type="submit" size="sm" className="bg-red-600 hover:bg-red-700 border-none text-white">
-                  Confirm Rejection
-                </Button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
+      {/* Reject modal — Centered via React Portal */}
+      <Modal
+        isOpen={Boolean(rejectingId)}
+        onClose={() => setRejectingId(null)}
+        title="Reject Submission"
+        subtitle="Provide a clear reason so the ambassador can understand and resubmit."
+        maxWidth="md"
+      >
+        <form onSubmit={handleRejectSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-1.5">
+              Rejection Reason *
+            </label>
+            <textarea
+              required
+              value={rejectionReason}
+              onChange={e => setRejectionReason(e.target.value)}
+              placeholder="e.g. The screenshot is blurry or does not show required content."
+              rows={3}
+              className="w-full bg-bg-dark border border-border-dark rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-text-muted/50 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 resize-none"
+            />
+          </div>
+          <div className="flex gap-2 justify-end pt-2 border-t border-border-dark/60">
+            <Button type="button" variant="ghost" size="sm" onClick={() => setRejectingId(null)}>Cancel</Button>
+            <Button type="submit" size="sm" className="bg-red-600 hover:bg-red-700 border-none text-white">
+              Confirm Rejection
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   )
 }

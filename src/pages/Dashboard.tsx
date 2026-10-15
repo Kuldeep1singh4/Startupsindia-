@@ -76,8 +76,8 @@ export const Dashboard = () => {
     return (
       <div className="space-y-8 animate-pulse">
         <div className="h-20 bg-bg-card rounded-xl"></div>
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-          {[...Array(5)].map((_, i) => <div key={i} className="h-28 bg-bg-card rounded-xl"></div>)}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {[...Array(5)].map((_, i) => <div key={i} className={`h-28 bg-bg-card rounded-xl ${i === 4 ? 'col-span-2 sm:col-span-1 lg:col-span-1' : ''}`}></div>)}
         </div>
         <div className="h-56 bg-bg-card rounded-xl"></div>
       </div>
@@ -162,9 +162,15 @@ export const Dashboard = () => {
       {error && <ErrorAlert message={error} onRetry={fetchAll} />}
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {statCards.map((stat, i) => (
-          <Card key={i} className="flex flex-col justify-between hover:border-border-dark/60 transition-colors group">
+          <Card
+            key={i}
+            className={cn(
+              "flex flex-col justify-between hover:border-border-dark/60 transition-colors group",
+              i === 4 ? "col-span-2 sm:col-span-1 lg:col-span-1" : ""
+            )}
+          >
             <p className="text-text-muted text-xs font-medium mb-2">{stat.label}</p>
             <div>
               <h3 className={cn("font-bold text-lg md:text-xl leading-tight", stat.color)}>

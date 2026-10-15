@@ -6,6 +6,8 @@ import { Badge } from "../../components/Badge"
 import { Input, Textarea, Select } from "../../components/FormControls"
 import { Award, Plus, Edit2, Trash2, X, CheckCircle2, Upload, ShieldCheck } from "lucide-react"
 import { ErrorAlert } from "../../components/ErrorAlert"
+import { compressImageToDataUrl } from "../../lib/imageCompression"
+import { Modal } from "../../components/Modal"
 
 export type CertificateItem = {
   id: string
@@ -175,21 +177,22 @@ export function CertificateMgmtView() {
     setPreviewImage(null)
   }
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
     setUploadingImage(true)
-    const reader = new FileReader()
-    reader.onload = () => {
-      setPreviewImage(reader.result as string)
-      setUploadingImage(false)
-    }
-    reader.onerror = () => {
+    try {
+      // Phase 10: Client-side compression before saving certificate image
+      // (Non-image files like PDFs pass through untouched without compression)
+      const { dataUrl } = await compressImageToDataUrl(file, 'certificate')
+      setPreviewImage(dataUrl)
+    } catch (err: any) {
+      console.error("Failed to compress certificate artwork:", err)
       setFeedbackMsg({ type: "error", text: "Failed to read certificate image file." })
+    } finally {
       setUploadingImage(false)
     }
-    reader.readAsDataURL(file)
   }
 
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -393,24 +396,15 @@ export function CertificateMgmtView() {
       )}
 
       {/* Certificate Modal */}
-      {editingCert && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-200">
-          <Card className="w-full max-w-lg bg-bg-card rounded-2xl shadow-2xl my-auto max-h-[90dvh] overflow-y-auto border border-border-dark p-6">
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
-                  <Award className="w-4 h-4" />
-                </div>
-                <h3 className="text-lg font-bold text-white">
-                  {isNew ? "Create Certificate Template" : "Edit Certificate Template"}
-                </h3>
-              </div>
-              <button onClick={closeForm} className="text-text-muted hover:text-white p-1">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSave} className="space-y-4">
+      <Modal
+        isOpen={Boolean(editingCert)}
+        onClose={closeForm}
+        title={isNew ? "Create Certificate Template" : "Edit Certificate Template"}
+        icon={<Award className="w-4 h-4 text-primary" />}
+        maxWidth="max-w-lg"
+      >
+        {editingCert && (
+          <form onSubmit={handleSave} className="space-y-4">
               {/* Template Artwork Upload */}
               <div>
                 <label className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
@@ -519,9 +513,8 @@ export function CertificateMgmtView() {
                 </Button>
               </div>
             </form>
-          </Card>
-        </div>
-      )}
+          )}
+        </Modal>
     </div>
   )
 }

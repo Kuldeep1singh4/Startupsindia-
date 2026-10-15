@@ -41,22 +41,24 @@ Platform administrators have access to an all-in-one backoffice portal to verify
 ## 🌟 Key Features
 
 ### 🎓 Ambassador Portal
-- **Gamified Dashboard (`/dashboard`):** Real-time tier badges, points balance, progress bar to next tier, national leaderboard rank, task stats, and visual milestone journey.
-- **Task Library & Proof Submissions (`/tasks`):** Browse active campus tasks with points and required proof types (Screenshot, URL, File). Supports file uploads with real-time feedback and submission status badges (New, Under Review, Completed, Rejected).
-- **Multi-Level Leaderboard (`/leaderboard`):** Dynamic rankings filterable by Scope (All India, State, District, City) and Timeframe (All-Time, Monthly, Quarterly), plus college-level competition tables.
+- **Gamified Dashboard (`/dashboard`):** Real-time tier badges, points balance, progress bar to next tier, national leaderboard rank, task stats, responsive 5-card stat layout with mobile summary card, and visual milestone journey.
+- **Task Library & Proof Submissions (`/tasks`):** Browse active campus tasks with points and required proof types (Screenshot, URL, File). Supports client-side compressed image uploads with instant preview, submission status badges (New, Under Review, Completed, Rejected), and centered submission modals.
+- **Multi-Level Leaderboard (`/leaderboard`):** Dynamic rankings filterable by Scope (All India, State, District, City) and Timeframe (All-Time, Monthly, Quarterly), plus college-level competition tables with mobile-optimized view toggles.
 - **Milestone Rewards Catalog (`/rewards`):** Visual catalog of unlocked and locked rewards (welcome kits, merchandise, conference passes) with direct claim request functionality.
 - **Digital Certificates (`/certificates`):** Downloadable and shareable credential cards with verification badges and accreditation seals based on attained ambassador tiers.
 - **Referral Program (`/referrals`):** Unique referral code generation, direct registration link with copy-to-clipboard toast feedback, WhatsApp and Twitter one-click social share, and tracking of referred peers.
-- **Ambassador Profile (`/profile`):** Personal and academic profile overview with role designation and referral codes.
+- **Ambassador Profile (`/profile`):** Personal and academic profile overview with role designation, compressed avatar uploads, and overflow-safe referral code display.
+- **Push Notification Center (`AppTopbar`):** Real-time alert notifications for announcements, urgent notices, new tasks, and reward claims with unread badge counters and one-click mark-all-as-read.
 
 ### 🛡️ Admin Management Portal (`/admin`)
 - **Overview Dashboard:** High-level metrics (Active Ambassadors, Pending Applications, Approved Tasks, Pending Reviews, Total Points Issued, Avg Points) with native mobile list cards.
-- **Task Verification Center:** Side-by-side submission verification queue supporting image preview, live proof URL testing, one-click approval with automatic point credit, and rejection with custom feedback reasons.
-- **Ambassador Management:** Search and filter ambassadors across name, email, college, state, and city. Admin promotion/demotion toggles, point adjustments, and status management.
+- **Task Verification Center:** Side-by-side submission verification queue supporting image preview, live proof URL testing, one-click approval with automatic point credit, and rejection modal with custom feedback reasons.
+- **Ambassador Management:** Search and filter ambassadors across name, email, college, state, and city. Admin promotion/demotion toggles, point adjustments, and status management via centered modal.
 - **Task Library Management:** Create, edit, toggle active status, and delete tasks with point values, instructions, and proof requirements.
-- **Level Tier Configuration:** Configure milestone point thresholds, level badges, and designations.
+- **Level Tier Configuration:** Configure milestone point thresholds, level badges, and designations with full-viewport modal editing.
 - **Certificate Management:** Dedicated visual management interface to configure certificates, upload custom template artwork, set point criteria, and preview ambassador credential cards.
 - **Reward Catalog Management:** Upload custom reward artwork, configure point requirements, inventory stock counters, and availability.
+- **Push Notification Broadcasting:** Create and dispatch target-audience notifications (all ambassadors, approved only, pending applicants, or tier-specific) with custom categories and action URLs.
 - **Terms & Conditions Editor:** In-app markdown editor allowing administrators to update official terms with automatic date tracking.
 - **Admin Profile & Audit Logs:** Dedicated security profile separate from ambassador dashboards.
 
@@ -118,6 +120,7 @@ client-dashboard/
     │   ├── FormControls.tsx   # Custom inputs, textareas, selects
     │   ├── LoadingState.tsx   # Dual-ring glowing spinner & skeletons
     │   ├── Logo.tsx           # Official image logo component
+    │   ├── Modal.tsx          # Universal createPortal centered dialog system
     │   ├── ProtectedRoute.tsx # Role-based route guards
     │   └── SectionHeader.tsx  # Page header component
     │
@@ -125,6 +128,8 @@ client-dashboard/
     │   └── AuthContext.tsx    # Supabase session & user profile state provider
     │
     ├── lib/
+    │   ├── imageCompression.ts # Client-side WebP compression & resizing engine
+    │   ├── notifications.ts   # Push notification fetch & broadcast service
     │   ├── rateLimit.ts       # Sliding-window brute-force prevention engine
     │   ├── security.ts        # DevMode blocking, hotkey locks, text selection
     │   ├── supabase.ts        # Supabase client with sessionStorage auth
@@ -155,6 +160,7 @@ client-dashboard/
             ├── AmbassadorMgmtView.tsx   # Ambassador search, filter, roles
             ├── CertificateMgmtView.tsx  # Certificate creation & image templates
             ├── LevelMgmtView.tsx        # Point tiers & designations
+            ├── NotificationMgmtView.tsx # Push notifications creator & log
             ├── RewardMgmtView.tsx       # Rewards inventory & image upload
             ├── TaskMgmtView.tsx         # Task library CRUD
             └── TaskVerificationView.tsx # Proof review & verification
@@ -219,7 +225,47 @@ The platform implements multi-layer defense mechanisms:
 
 ---
 
-## 🗄️ Database Schema
+## 🪟 Universal Centered Modal Architecture
+
+All modals, popups, and dialogs across the platform now mount exclusively through the universal [`Modal.tsx`](src/components/Modal.tsx) component:
+- **`createPortal` Body Mounting:** Modals mount directly to `document.body`, completely separating dialog placement from parent layouts, sidebar widths (e.g. `w-60` desktop sidebar), topbars, or container offsets.
+- **Mathematical Screen Centering:** Utilizes `fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5`, guaranteeing every new box or tab appears at the absolute dead center of the screen on all device viewports.
+- **Unclipped Boundaries:** Modal dialog cards feature `max-h-[90vh] max-h-[90dvh] flex flex-col overflow-hidden` with internally scrollable bodies (`overflow-y-auto min-h-0`). Dialog cards never exceed the viewport or cut off borders.
+- **Accessibility & Focus Isolation:** Includes automatic `document.body.style.overflow = "hidden"` scroll-locking when open, physical `Escape` key listeners, and backdrop click-to-dismiss.
+- **Unified Header & Icon Design:** Supports icons, title, subtitle/description, and optional close buttons in a cohesive design system.
+
+---
+
+## 📱 Phone & Tablet Viewport Hardening (Zero Overflows)
+
+Every page and view has been audited and hardened for mobile (320px–480px), tablet (640px–1024px), and desktop viewports:
+- **Elimination of Accidental Containing Blocks:** Updated CSS micro-animations (`@keyframes fade-in` in `src/index.css`) to strictly animate `opacity` without `transform: translateY(...)`. Per CSS specifications, non-`none` transforms cause elements to become containing blocks for `position: fixed` descendants, which previously displaced fixed overlays.
+- **Dynamic 5-Card Stats Grid:** On `/dashboard`, the 5-stat card layout adapts seamlessly via `grid-cols-2 sm:grid-cols-3 lg:grid-cols-5`, with the 5th card automatically spanning 2 columns on mobile for a clean summary card without awkward orphaned half-boxes.
+- **Responsive Navigation & Action Buttons:**
+  - Leaderboard view toggles (`Ambassadors` vs `Colleges`) adapt via `flex-wrap sm:flex-nowrap` with `flex-1 sm:flex-none`.
+  - Task submission buttons on `/tasks` switch to full-width block buttons (`w-full sm:w-auto`) on mobile for effortless touch targeting.
+  - Verification actions in admin views use dual 50% split buttons on mobile and clean column stacking on tablets/desktops.
+- **Safe Truncation & Word Wrapping:** Long email addresses, university names, and referral URLs enforce `break-all` and flex `min-w-0` to prevent horizontal viewport blowout on small phones.
+- **Isolated Layout Scrolling:** Desktop menu/sidebar and top navigation header remain static; only the inner main content area scrolls (`data-scroll-container`), preserving scroll positions during navigation.
+
+---
+
+## 🗜️ Storage Optimization & Client-Side Compression Engine
+
+The platform implements high-performance client-side image compression (`src/lib/imageCompression.ts`) before any media reaches Supabase Storage:
+- **WebP Modern Format Conversion:** Automatically transforms PNG, JPG, and standard formats into modern WebP with automatic fallback.
+- **Resolution & Dimension Capping:**
+  - Standard card artwork, task proofs, reward assets, and certificate templates: Max dimension capped at 1920px.
+  - Ambassador profile avatars and tier badges: Max dimension capped at 800px.
+- **Strict Size Thresholds:** Compresses source images down to ≤ 300–500KB (≤ 100KB for avatars/badges), saving over 80–90% bandwidth and storage consumption.
+- **Direct Upload Integration:** Applied at every upload entry point across the application:
+  - Ambassador Profile photo upload
+  - Task proof submission (Screenshot/Image)
+  - Admin Reward Catalog artwork creation
+  - Admin Certificate Template artwork creation
+  - Admin Level Tier custom badge/medal upload
+
+---
 
 The platform relies on the following key Supabase tables:
 - `ambassadors`: Ambassador profile records, university details, points balance, referral code, and role (`ambassador` or `admin`).

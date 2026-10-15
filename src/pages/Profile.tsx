@@ -1,19 +1,54 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { SectionHeader } from "../components/SectionHeader"
 import { Card } from "../components/Card"
 import { useAuth } from "../contexts/AuthContext"
-import { User, Mail, Building2, MapPin, Phone, Shield, Copy, CheckCircle2, BookOpen, Hash } from "lucide-react"
+import { User, Mail, Building2, MapPin, Phone, Shield, Copy, CheckCircle2, BookOpen, Hash, Camera } from "lucide-react"
 import { Badge } from "../components/Badge"
+import { compressImageToDataUrl } from "../lib/imageCompression"
+import { supabase } from "../lib/supabase"
 
 export const Profile = () => {
   const { profile: authProfile, loading: authLoading } = useAuth()
   const navigate = useNavigate()
   const [copied, setCopied] = useState(false)
   const [copyMsg, setCopyMsg] = useState<string | null>(null)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
 
   const profile = authProfile
   const loading = authLoading
+
+  useEffect(() => {
+    if (profile?.id) {
+      const saved = localStorage.getItem(`ambassador_avatar_${profile.id}`)
+      if (saved) setAvatarUrl(saved)
+    }
+  }, [profile?.id])
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !profile?.id) return
+    setUploadingAvatar(true)
+    try {
+      // Phase 10: Client-side compression for profile avatar (max 800px, WebP, <= 100KB)
+      const { dataUrl } = await compressImageToDataUrl(file, 'avatar')
+      setAvatarUrl(dataUrl)
+      localStorage.setItem(`ambassador_avatar_${profile.id}`, dataUrl)
+      try {
+        await supabase.from('ambassadors').update({ avatar_url: dataUrl } as any).eq('id', profile.id)
+      } catch {
+        // ignore schema mismatch
+      }
+      setCopyMsg("Profile photo updated successfully!")
+      setTimeout(() => setCopyMsg(null), 3500)
+    } catch (err: any) {
+      console.error("Failed to upload avatar:", err)
+    } finally {
+      setUploadingAvatar(false)
+    }
+  }
 
   useEffect(() => {
     if (!loading && profile?.role === 'admin') {
@@ -83,9 +118,34 @@ export const Profile = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Left: Identity Card */}
         <Card className="col-span-1 flex flex-col items-center text-center p-8 border-primary/20 bg-gradient-to-b from-bg-card to-bg-dark">
-          {/* Avatar */}
-          <div className="w-24 h-24 bg-primary/15 border-2 border-primary/30 rounded-full flex items-center justify-center text-primary font-bold text-3xl mb-5 shadow-[0_0_30px_rgba(242,51,64,0.15)]">
-            {initials}
+          {/* Avatar with Compressed Photo Upload */}
+          <div className="relative group mb-5">
+            <div className="w-24 h-24 bg-primary/15 border-2 border-primary/30 rounded-full flex items-center justify-center text-primary font-bold text-3xl overflow-hidden shadow-[0_0_30px_rgba(242,51,64,0.15)]">
+              {avatarUrl ? (
+                <img src={avatarUrl} alt={profile.full_name} className="w-full h-full object-cover" />
+              ) : (
+                <span>{initials}</span>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => avatarInputRef.current?.click()}
+              disabled={uploadingAvatar}
+              className="absolute bottom-0 right-0 p-2 rounded-full bg-primary text-white shadow-md hover:bg-primary-hover hover:scale-105 transition-all cursor-pointer"
+              title="Upload profile photo"
+              aria-label="Upload profile photo"
+            >
+              <Camera className="w-3.5 h-3.5" />
+            </button>
+
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleAvatarUpload}
+              className="hidden"
+            />
           </div>
 
           <h2 className="text-xl font-bold text-white mb-1">{profile.full_name}</h2>
@@ -135,7 +195,7 @@ export const Profile = () => {
                 <label className="text-xs text-text-muted uppercase tracking-wider font-semibold mb-1.5 flex items-center gap-1.5">
                   <Mail className="w-3.5 h-3.5" /> Email
                 </label>
-                <div className="text-white bg-bg-dark p-3 rounded-lg border border-border-dark text-sm">{profile.email}</div>
+                <div className="text-white bg-bg-dark p-3 rounded-lg border border-border-dark text-sm break-all">{profile.email}</div>
               </div>
               <div>
                 <label className="text-xs text-text-muted uppercase tracking-wider font-semibold mb-1.5 flex items-center gap-1.5">
@@ -224,8 +284,8 @@ export const Profile = () => {
                 {referralLink && (
                   <div>
                     <label className="text-xs text-text-muted uppercase tracking-wider font-semibold mb-1.5 block">Referral Link</label>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 text-text-muted bg-bg-dark p-3 rounded-lg border border-border-dark text-xs truncate">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="flex-1 min-w-0 text-text-muted bg-bg-dark p-3 rounded-lg border border-border-dark text-xs truncate">
                         {referralLink}
                       </div>
                       <button

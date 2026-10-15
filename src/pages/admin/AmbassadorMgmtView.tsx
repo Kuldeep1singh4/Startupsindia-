@@ -6,6 +6,7 @@ import { Badge } from "../../components/Badge"
 import { Select, Input } from "../../components/FormControls"
 import { Shield, ShieldOff, Edit2, Trash2, Search, ChevronDown, ChevronUp, X, CheckCircle2 } from "lucide-react"
 import { ErrorAlert } from "../../components/ErrorAlert"
+import { Modal } from "../../components/Modal"
 
 type Ambassador = {
   id: string
@@ -339,10 +340,10 @@ export function AmbassadorMgmtView() {
               {expandedId === amb.id && (
                 <div className="border-t border-border-dark bg-bg-dark/40 px-4 py-3 space-y-3">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs text-text-muted">
-                    <div><span className="font-semibold text-white">College:</span><br />{amb.college_name}</div>
-                    <div><span className="font-semibold text-white">Location:</span><br />{[amb.city, amb.state].filter(Boolean).join(', ') || '—'}</div>
-                    <div><span className="font-semibold text-white">Phone:</span><br />{amb.mobile_number || '—'}</div>
-                    <div>
+                    <div className="break-words min-w-0"><span className="font-semibold text-white">College:</span><br /><span className="break-words">{amb.college_name}</span></div>
+                    <div className="break-words min-w-0"><span className="font-semibold text-white">Location:</span><br />{[amb.city, amb.state].filter(Boolean).join(', ') || '—'}</div>
+                    <div className="break-words min-w-0"><span className="font-semibold text-white">Phone:</span><br />{amb.mobile_number || '—'}</div>
+                    <div className="break-words min-w-0">
                       <span className="font-semibold text-white">Role / Level:</span><br />
                       {amb.role === 'admin' ? (
                         <span className="text-primary font-bold">Platform Administrator</span>
@@ -350,11 +351,11 @@ export function AmbassadorMgmtView() {
                         amb.current_level || 'Bronze Ambassador'
                       )}
                     </div>
-                    <div className="sm:hidden">
+                    <div className="sm:hidden break-words min-w-0">
                       <span className="font-semibold text-white">Status:</span><br />
                       <Badge variant={amb.status === 'Approved' ? 'success' : amb.status === 'Pending' ? 'warning' : 'error'} className="mt-0.5">{amb.status}</Badge>
                     </div>
-                    <div>
+                    <div className="break-words min-w-0">
                       <span className="font-semibold text-white">Joined:</span><br />
                       {new Date(amb.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}
                     </div>
@@ -401,31 +402,29 @@ export function AmbassadorMgmtView() {
       )}
 
       {/* Edit Points modal */}
-      {editingAmb && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm overflow-y-auto">
-          <Card className="w-full max-w-sm bg-bg-card rounded-2xl shadow-2xl my-auto border border-border-dark">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-bold text-white">Edit: {editingAmb.full_name}</h3>
-              <button onClick={() => setEditingAmb(null)} className="text-text-muted hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
+      <Modal
+        isOpen={Boolean(editingAmb)}
+        onClose={() => setEditingAmb(null)}
+        title={editingAmb ? `Edit: ${editingAmb.full_name}` : "Edit Ambassador"}
+        icon={<Edit2 className="w-4 h-4 text-primary" />}
+        maxWidth="max-w-sm"
+      >
+        {editingAmb && (
+          <form onSubmit={handleEditSave} className="space-y-4">
+            <Select label="Application Status" name="status" defaultValue={editingAmb.status}>
+              <option value="Pending">Pending</option>
+              <option value="Approved">Approved</option>
+              <option value="Rejected">Rejected</option>
+              <option value="Suspended">Suspended</option>
+            </Select>
+            <Input label="Total Points" type="number" name="total_points" defaultValue={editingAmb.total_points || 0} />
+            <div className="flex gap-2 justify-end pt-2 border-t border-border-dark">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setEditingAmb(null)}>Cancel</Button>
+              <Button type="submit" size="sm">Save Changes</Button>
             </div>
-            <form onSubmit={handleEditSave} className="space-y-4">
-              <Select label="Application Status" name="status" defaultValue={editingAmb.status}>
-                <option value="Pending">Pending</option>
-                <option value="Approved">Approved</option>
-                <option value="Rejected">Rejected</option>
-                <option value="Suspended">Suspended</option>
-              </Select>
-              <Input label="Total Points" type="number" name="total_points" defaultValue={editingAmb.total_points || 0} />
-              <div className="flex gap-2 justify-end">
-                <Button type="button" variant="ghost" size="sm" onClick={() => setEditingAmb(null)}>Cancel</Button>
-                <Button type="submit" size="sm">Save Changes</Button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
+          </form>
+        )}
+      </Modal>
     </div>
   )
 }

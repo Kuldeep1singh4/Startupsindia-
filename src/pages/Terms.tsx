@@ -4,7 +4,8 @@ import { useAuth } from "../contexts/AuthContext"
 import { Card } from "../components/Card"
 import { Button } from "../components/Button"
 import { Badge } from "../components/Badge"
-import { FileText, Edit3, Save, X, RotateCcw, ArrowLeft, CheckCircle2, ShieldCheck } from "lucide-react"
+import { Logo } from "../components/Logo"
+import { FileText, Edit3, Save, X, RotateCcw, ArrowLeft, CheckCircle2 } from "lucide-react"
 
 interface TermSection {
   id: string
@@ -153,8 +154,8 @@ export function Terms() {
 
   return (
     <div className="min-h-screen bg-bg-dark text-white selection:bg-primary/20">
-      {/* Top Banner Navigation */}
-      <header className="sticky top-0 z-30 bg-bg-card/90 backdrop-blur-md border-b border-border-dark px-4 sm:px-8 py-3.5 flex items-center justify-between">
+      {/* Top Banner Navigation — Scrolls with main body per Phase 10 */}
+      <header className="bg-bg-card border-b border-border-dark px-4 sm:px-8 py-3.5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Button
             variant="ghost"
@@ -165,9 +166,11 @@ export function Terms() {
             <ArrowLeft className="w-4 h-4 mr-1.5" /> Back
           </Button>
           <div className="h-4 w-px bg-border-dark hidden sm:block" />
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-5 h-5 text-primary" />
-            <span className="font-bold text-sm tracking-wide">StartupsIndia Ambassador Platform</span>
+          <div className="flex items-center gap-2.5">
+            <Logo size="sm" to="/" />
+            <span className="font-semibold text-xs text-text-muted hidden sm:inline-block border-l border-border-dark pl-2.5">
+              Program Terms
+            </span>
           </div>
         </div>
 

@@ -136,12 +136,12 @@ export const Leaderboard = () => {
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <SectionHeader title="Leaderboard" subtitle="See how you rank across India." className="mb-0 md:mb-0" />
-        <div className="flex gap-2">
-          <Button variant={view === 'individual' ? 'primary' : 'outline'} onClick={() => setView('individual')} size="sm">
-            <Trophy className="w-4 h-4 mr-2" /> Ambassadors
+        <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full md:w-auto">
+          <Button variant={view === 'individual' ? 'primary' : 'outline'} onClick={() => setView('individual')} size="sm" className="flex-1 sm:flex-none justify-center">
+            <Trophy className="w-4 h-4 mr-2 shrink-0" /> Ambassadors
           </Button>
-          <Button variant={view === 'college' ? 'primary' : 'outline'} onClick={() => setView('college')} size="sm">
-            <Building2 className="w-4 h-4 mr-2" /> Colleges
+          <Button variant={view === 'college' ? 'primary' : 'outline'} onClick={() => setView('college')} size="sm" className="flex-1 sm:flex-none justify-center">
+            <Building2 className="w-4 h-4 mr-2 shrink-0" /> Colleges
           </Button>
         </div>
       </div>

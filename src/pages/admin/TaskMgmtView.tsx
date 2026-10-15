@@ -6,6 +6,7 @@ import { Badge } from "../../components/Badge"
 import { Select, Input, Textarea } from "../../components/FormControls"
 import { Plus, Edit2, Trash2, ToggleLeft, ToggleRight, X, CheckCircle2 } from "lucide-react"
 import { ErrorAlert } from "../../components/ErrorAlert"
+import { Modal } from "../../components/Modal"
 
 type Task = {
   id: string
@@ -205,44 +206,44 @@ export function TaskMgmtView() {
         </div>
       )}
 
-      {/* Create/Edit form modal */}
-      {editingTask && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm overflow-y-auto">
-          <Card className="w-full max-w-lg bg-bg-card rounded-2xl shadow-2xl my-auto max-h-[90dvh] overflow-y-auto border border-border-dark">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-base font-bold text-white">{isNew ? 'Create Task' : 'Edit Task'}</h3>
-              <button onClick={closeForm} className="text-text-muted hover:text-white"><X className="w-5 h-5" /></button>
+      {/* Create/Edit form modal — Centered via React Portal */}
+      <Modal
+        isOpen={Boolean(editingTask)}
+        onClose={closeForm}
+        title={isNew ? 'Create New Task' : 'Edit Task Details'}
+        subtitle="Configure title, points reward, and required verification proof."
+        maxWidth="lg"
+      >
+        {editingTask && (
+          <form onSubmit={handleSave} className="space-y-4">
+            <Input label="Task Name" name="name" required defaultValue={editingTask.name} placeholder="e.g. Share Event Poster" />
+            <Textarea label="Description" name="description" required rows={3} defaultValue={editingTask.description} placeholder="Describe what the ambassador needs to do..." />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input label="Points" name="points" type="number" required min={0} defaultValue={editingTask.points || 100} />
+              <Select label="Proof Type" name="required_proof_type" defaultValue={editingTask.required_proof_type}>
+                <option value="Text">Text</option>
+                <option value="URL">URL / Link</option>
+                <option value="Image">Image</option>
+                <option value="Screenshot">Screenshot</option>
+              </Select>
             </div>
-            <form onSubmit={handleSave} className="space-y-4">
-              <Input label="Task Name" name="name" required defaultValue={editingTask.name} placeholder="e.g. Share Event Poster" />
-              <Textarea label="Description" name="description" required rows={3} defaultValue={editingTask.description} placeholder="Describe what the ambassador needs to do..." />
-              <div className="grid grid-cols-2 gap-3">
-                <Input label="Points" name="points" type="number" required min={0} defaultValue={editingTask.points || 100} />
-                <Select label="Proof Type" name="required_proof_type" defaultValue={editingTask.required_proof_type}>
-                  <option value="Text">Text</option>
-                  <option value="URL">URL / Link</option>
-                  <option value="Image">Image</option>
-                  <option value="Screenshot">Screenshot</option>
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Select label="Status" name="is_active" defaultValue={editingTask.is_active ? 'true' : 'false'}>
-                  <option value="true">Active</option>
-                  <option value="false">Inactive</option>
-                </Select>
-                <Select label="Repeatable?" name="is_repeatable" defaultValue={editingTask.is_repeatable ? 'true' : 'false'}>
-                  <option value="false">No (once only)</option>
-                  <option value="true">Yes (unlimited)</option>
-                </Select>
-              </div>
-              <div className="flex gap-2 justify-end pt-2">
-                <Button type="button" variant="ghost" size="sm" onClick={closeForm}>Cancel</Button>
-                <Button type="submit" size="sm">{isNew ? 'Create Task' : 'Save Changes'}</Button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Select label="Status" name="is_active" defaultValue={editingTask.is_active ? 'true' : 'false'}>
+                <option value="true">Active</option>
+                <option value="false">Inactive</option>
+              </Select>
+              <Select label="Repeatable?" name="is_repeatable" defaultValue={editingTask.is_repeatable ? 'true' : 'false'}>
+                <option value="false">No (once only)</option>
+                <option value="true">Yes (unlimited)</option>
+              </Select>
+            </div>
+            <div className="flex gap-2 justify-end pt-3 border-t border-border-dark/60">
+              <Button type="button" variant="ghost" size="sm" onClick={closeForm}>Cancel</Button>
+              <Button type="submit" size="sm">{isNew ? 'Create Task' : 'Save Changes'}</Button>
+            </div>
+          </form>
+        )}
+      </Modal>
     </div>
   )
 }

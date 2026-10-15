@@ -174,9 +174,9 @@ export const Certificates = () => {
                     onClick={() => handleDownload(level)}
                   >
                     {isUnlocked ? (
-                      <><Download className="w-4 h-4 mr-2" /> Download Certificate (PDF)</>
+                      <><Download className="w-4 h-4 mr-2 shrink-0" /> <span>Download Certificate (PDF)</span></>
                     ) : (
-                      <><Lock className="w-3.5 h-3.5 mr-1.5" /> Locked ({minPts.toLocaleString()} Pts Required)</>
+                      <><Lock className="w-3.5 h-3.5 mr-1.5 shrink-0" /> <span className="truncate">Locked ({minPts.toLocaleString()} Pts Required)</span></>
                     )}
                   </Button>
                 </div>

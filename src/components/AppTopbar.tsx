@@ -133,7 +133,7 @@ export function AppTopbar({ profile, showProfileLink = true }: { profile: any; s
           </button>
 
           {showNotifications && (
-            <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-bg-card border border-border-dark shadow-2xl rounded-2xl overflow-hidden z-50 animate-in fade-in duration-150">
+            <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 max-w-[calc(100vw-1.5rem)] bg-bg-card border border-border-dark shadow-2xl rounded-2xl overflow-hidden z-50 animate-in fade-in duration-150">
               {/* Header */}
               <div className="px-4 py-3 border-b border-border-dark flex items-center justify-between bg-bg-card">
                 <div className="flex items-center gap-2">
@@ -238,7 +238,7 @@ export function AppTopbar({ profile, showProfileLink = true }: { profile: any; s
             </button>
 
             {showUserMenu && (
-              <div className="absolute right-0 top-full mt-2 w-52 bg-bg-card border border-border-dark shadow-2xl rounded-2xl overflow-hidden z-50 animate-in fade-in duration-150">
+              <div className="absolute right-0 top-full mt-2 w-52 max-w-[calc(100vw-1.5rem)] bg-bg-card border border-border-dark shadow-2xl rounded-2xl overflow-hidden z-50 animate-in fade-in duration-150">
                 <div className="px-4 py-3 border-b border-border-dark">
                   <p className="text-sm font-bold text-white truncate">{profile.full_name}</p>
                   <p className="text-xs text-primary font-medium mt-0.5">

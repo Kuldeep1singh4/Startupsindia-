@@ -18,7 +18,7 @@ export function AmbassadorLayout() {
         <AppTopbar profile={profile} />
 
         {/* Middle Main Content — ONLY this area scrolls */}
-        <main className="flex-1 min-h-0 p-4 md:p-6 lg:p-8 overflow-y-auto pb-24 md:pb-12">
+        <main data-scroll-container className="flex-1 min-h-0 p-4 md:p-6 lg:p-8 overflow-y-auto pb-24 md:pb-12">
           <div className="max-w-7xl mx-auto w-full">
             <Outlet />
           </div>

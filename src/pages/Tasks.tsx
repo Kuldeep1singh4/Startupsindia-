@@ -7,6 +7,8 @@ import { supabase } from "../lib/supabase"
 import { CheckCircle2, Clock, PlayCircle, XCircle, Upload, AlertCircle } from "lucide-react"
 import { ErrorAlert } from "../components/ErrorAlert"
 import { checkRateLimit } from "../lib/rateLimit"
+import { compressImage } from "../lib/imageCompression"
+import { Modal } from "../components/Modal"
 
 type Task = {
   id: string;
@@ -131,13 +133,18 @@ export const Tasks = () => {
     setSubmitError(null)
 
     try {
-      const fileExt = file.name.split('.').pop()
+      // Phase 10: Client-side compression before reaching Supabase Storage
+      const compressedFile = await compressImage(file, 'proof')
+      const fileExt = compressedFile.name.split('.').pop() || 'webp'
       const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`
       const filePath = `${ambassadorId}/${fileName}`
 
       const { error: uploadError } = await supabase.storage
         .from('proofs')
-        .upload(filePath, file)
+        .upload(filePath, compressedFile, {
+          contentType: compressedFile.type || 'image/webp',
+          upsert: true
+        })
 
       if (uploadError) throw uploadError
 
@@ -266,15 +273,15 @@ export const Tasks = () => {
               
               <div className="w-full md:w-auto flex flex-col gap-2 shrink-0">
                 {canStart && task.is_active && (
-                  <Button onClick={() => { setActiveTask(task); setProofData("") }}>
+                  <Button onClick={() => { setActiveTask(task); setProofData("") }} className="w-full sm:w-auto justify-center">
                     {task.is_repeatable ? 'Submit Task' : status === 'Rejected' ? 'Resubmit Proof' : 'Start Task'} <PlayCircle className="w-4 h-4 ml-2" />
                   </Button>
                 )}
                 {status === 'Pending' && !task.is_repeatable && (
-                  <Button variant="outline" disabled>In Review <Clock className="w-4 h-4 ml-2" /></Button>
+                  <Button variant="outline" disabled className="w-full sm:w-auto justify-center">In Review <Clock className="w-4 h-4 ml-2" /></Button>
                 )}
                 {status === 'Approved' && !task.is_repeatable && (
-                  <Button variant="secondary" className="text-green-600 hover:text-green-700 hover:bg-white" disabled>Done <CheckCircle2 className="w-4 h-4 ml-2" /></Button>
+                  <Button variant="secondary" className="w-full sm:w-auto justify-center text-green-600 hover:text-green-700 hover:bg-white" disabled>Done <CheckCircle2 className="w-4 h-4 ml-2" /></Button>
                 )}
               </div>
             </Card>
@@ -282,72 +289,85 @@ export const Tasks = () => {
         })}
       </div>
 
-      {/* Task Submission Modal */}
-      {activeTask && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
-          <Card className="w-full max-w-lg shadow-2xl relative bg-bg-card my-auto max-h-[90dvh] overflow-y-auto border border-border-dark">
-            <button 
-              onClick={() => setActiveTask(null)} 
-              className="absolute top-4 right-4 text-text-muted hover:text-white"
-            >
-              <XCircle className="w-6 h-6" />
-            </button>
-            <h2 className="text-2xl font-bold text-white mb-2">{activeTask.name}</h2>
-            <p className="text-text-muted mb-6 text-sm">{activeTask.description}</p>
-            
-            {submitError && <ErrorAlert message={submitError} className="mb-4" />}
+      {/* Task Submission Modal — Centered via React Portal */}
+      <Modal
+        isOpen={Boolean(activeTask)}
+        onClose={() => setActiveTask(null)}
+        title={activeTask?.name}
+        subtitle={activeTask?.description}
+        maxWidth="lg"
+      >
+        {submitError && <ErrorAlert message={submitError} className="mb-4" />}
 
-            <form onSubmit={handleSubmitProof} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Submit Proof ({activeTask.required_proof_type})
-                </label>
-                
-                {(activeTask.required_proof_type === 'Image' || activeTask.required_proof_type === 'Screenshot') ? (
-                  <div className="space-y-2">
-                    <input type="hidden" required value={proofData} />
-                    {proofData ? (
-                      <div className="relative border border-border-dark rounded overflow-hidden">
-                        <img src={proofData} alt="Proof" className="w-full h-40 object-cover" />
-                        <button type="button" onClick={() => setProofData("")} className="absolute top-2 right-2 bg-black/50 rounded-full p-1 hover:bg-black transition-colors"><XCircle className="w-5 h-5 text-white" /></button>
-                      </div>
-                    ) : (
-                      <Button type="button" variant="outline" className="w-full h-32 flex flex-col items-center justify-center border-dashed hover:border-primary/50" onClick={() => fileInputRef.current?.click()} disabled={uploadingImage}>
-                        <Upload className="w-6 h-6 mb-2 text-text-muted" />
-                        {uploadingImage ? "Uploading..." : "Click to Upload Image"}
-                      </Button>
-                    )}
-                    <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
-                  </div>
-                ) : (activeTask.required_proof_type === 'URL' || activeTask.required_proof_type === 'Video URL') ? (
-                  <input 
-                    required 
-                    type="url" 
-                    placeholder="https://..." 
-                    value={proofData} 
-                    onChange={e => setProofData(e.target.value)} 
-                    className="w-full bg-bg-dark border border-border-dark rounded-md p-3 text-white focus:outline-none focus:border-primary transition-colors hover:border-primary/50"
-                  />
-                ) : (
-                  <textarea 
-                    required 
-                    placeholder="Enter details here..." 
-                    value={proofData} 
-                    onChange={e => setProofData(e.target.value)} 
-                    className="w-full bg-bg-dark border border-border-dark rounded-md p-3 text-white min-h-[120px] focus:outline-none focus:border-primary transition-colors hover:border-primary/50"
-                  />
-                )}
-              </div>
-              <div className="flex gap-4 pt-4">
-                <Button type="button" variant="ghost" onClick={() => setActiveTask(null)} className="flex-1 hover:bg-white/5">Cancel</Button>
-                <Button type="submit" className="flex-1 hover:-translate-y-0.5 transition-transform" disabled={submitting || (['Image', 'Screenshot'].includes(activeTask.required_proof_type) && !proofData)}>
-                  {submitting ? "Submitting..." : "Submit Proof"}
-                </Button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
+        {activeTask && (
+          <form onSubmit={handleSubmitProof} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">
+                Submit Proof ({activeTask.required_proof_type})
+              </label>
+              
+              {(activeTask.required_proof_type === 'Image' || activeTask.required_proof_type === 'Screenshot') ? (
+                <div className="space-y-2">
+                  <input type="hidden" required value={proofData} />
+                  {proofData ? (
+                    <div className="relative border border-border-dark rounded-xl overflow-hidden">
+                      <img src={proofData} alt="Proof" className="w-full h-44 object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setProofData("")}
+                        className="absolute top-2 right-2 bg-black/70 rounded-full p-1.5 hover:bg-black transition-colors"
+                      >
+                        <XCircle className="w-5 h-5 text-white" />
+                      </button>
+                    </div>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full h-32 flex flex-col items-center justify-center border-dashed hover:border-primary/50"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingImage}
+                    >
+                      <Upload className="w-6 h-6 mb-2 text-text-muted" />
+                      {uploadingImage ? "Compressing & Uploading..." : "Click to Upload Image Proof"}
+                    </Button>
+                  )}
+                  <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
+                </div>
+              ) : (activeTask.required_proof_type === 'URL' || activeTask.required_proof_type === 'Video URL') ? (
+                <input 
+                  required 
+                  type="url" 
+                  placeholder="https://..." 
+                  value={proofData} 
+                  onChange={e => setProofData(e.target.value)} 
+                  className="w-full bg-bg-dark border border-border-dark rounded-xl p-3 text-white focus:outline-none focus:border-primary transition-colors hover:border-primary/50 text-sm"
+                />
+              ) : (
+                <textarea 
+                  required 
+                  placeholder="Enter proof details or campaign notes here..." 
+                  value={proofData} 
+                  onChange={e => setProofData(e.target.value)} 
+                  className="w-full bg-bg-dark border border-border-dark rounded-xl p-3 text-white min-h-[120px] focus:outline-none focus:border-primary transition-colors hover:border-primary/50 text-sm resize-none"
+                />
+              )}
+            </div>
+            <div className="flex gap-3 pt-3 border-t border-border-dark/60">
+              <Button type="button" variant="ghost" onClick={() => setActiveTask(null)} className="flex-1 hover:bg-white/5">
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="flex-1 hover:-translate-y-0.5 transition-transform"
+                disabled={submitting || (['Image', 'Screenshot'].includes(activeTask.required_proof_type) && !proofData)}
+              >
+                {submitting ? "Submitting..." : "Submit Proof"}
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
     </div>
   )
 }
