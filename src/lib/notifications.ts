@@ -16,7 +16,7 @@ const READ_STORAGE_KEY = 'startupsindia_read_notifications_v1'
 
 const DEFAULT_NOTIFICATIONS: AppNotification[] = [
   {
-    id: 'notif_welcome',
+    id: 'e1000000-0000-0000-0000-000000000001',
     title: 'Welcome to StartupsIndia Ambassador Program',
     message: 'Explore your dashboard, complete tasks, and climb the national leaderboard!',
     category: 'announcement',
@@ -25,7 +25,7 @@ const DEFAULT_NOTIFICATIONS: AppNotification[] = [
     action_url: '/tasks'
   },
   {
-    id: 'notif_tasks',
+    id: 'e1000000-0000-0000-0000-000000000002',
     title: 'New Campus Tasks Available',
     message: 'Submit your proofs for recently added campus outreach tasks to earn points.',
     category: 'task',
@@ -35,35 +35,84 @@ const DEFAULT_NOTIFICATIONS: AppNotification[] = [
   }
 ]
 
-export async function fetchNotifications(): Promise<AppNotification[]> {
-  try {
-    // Attempt fetch from Supabase if table exists
-    const { data, error } = await supabase
-      .from('notifications')
-      .select('*')
-      .order('created_at', { ascending: false })
+// Track Supabase schema availability to avoid spamming 404 network requests in console
+let isSupabaseNotificationsAvailable: boolean | null = null
 
-    if (!error && data && data.length > 0) {
-      return data as AppNotification[]
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8)
+    return v.toString(16)
+  })
+}
+
+const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str)
+
+export function isNotificationsTableOnline(): boolean {
+  return isSupabaseNotificationsAvailable === true
+}
+
+export function resetNotificationsTableAvailability(): void {
+  isSupabaseNotificationsAvailable = null
+}
+
+export async function checkSupabaseNotificationsAvailability(): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('notifications')
+      .select('id')
+      .limit(1)
+
+    if (error && (error.code === 'PGRST205' || error.message?.includes('schema cache'))) {
+      isSupabaseNotificationsAvailable = false
+      return false
     }
+    isSupabaseNotificationsAvailable = !error
+    return isSupabaseNotificationsAvailable
   } catch {
-    // Table not present in schema; fall back to local store
+    isSupabaseNotificationsAvailable = false
+    return false
+  }
+}
+
+export async function fetchNotifications(): Promise<AppNotification[]> {
+  // 1. If Supabase is verified available or hasn't been probed yet, try fetching
+  if (isSupabaseNotificationsAvailable !== false) {
+    try {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        if (error.code === 'PGRST205' || error.message?.includes('schema cache')) {
+          isSupabaseNotificationsAvailable = false
+        }
+      } else if (data !== null) {
+        isSupabaseNotificationsAvailable = true
+        return data as AppNotification[]
+      }
+    } catch {
+      isSupabaseNotificationsAvailable = false
+    }
   }
 
-  // Fallback to local storage
+  // 2. Fallback to local broadcast storage
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return parsed
       }
     }
   } catch (err) {
-    console.error("Failed to read local notifications:", err)
+    console.warn("Failed to read local notifications:", err)
   }
 
-  // Initial defaults
+  // 3. Initial defaults (only on fresh storage)
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_NOTIFICATIONS))
   } catch {
@@ -75,51 +124,78 @@ export async function fetchNotifications(): Promise<AppNotification[]> {
 export async function createNotification(
   params: Omit<AppNotification, 'id' | 'created_at'>
 ): Promise<AppNotification> {
-  const newNotif: AppNotification = {
-    ...params,
-    id: `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-    created_at: new Date().toISOString()
-  }
+  let createdNotif: AppNotification | null = null
 
-  // 1. Try to persist to Supabase
-  try {
-    const { error } = await supabase.from('notifications').insert([newNotif])
-    if (error) {
-      console.warn("Supabase notifications table not ready; using persistent local broadcast store.")
+  // 1. Persist to Supabase without sending a manual string ID (let PostgreSQL generate the UUID)
+  if (isSupabaseNotificationsAvailable !== false) {
+    try {
+      const { data, error } = await supabase
+        .from('notifications')
+        .insert([{
+          title: params.title,
+          message: params.message,
+          category: params.category,
+          target_audience: params.target_audience,
+          action_url: params.action_url || null
+        }])
+        .select()
+        .single()
+
+      if (error) {
+        if (error.code === 'PGRST205' || error.message?.includes('schema cache')) {
+          isSupabaseNotificationsAvailable = false
+        } else {
+          console.warn("Supabase notification insert warning:", error.message)
+        }
+      } else if (data) {
+        isSupabaseNotificationsAvailable = true
+        createdNotif = data as AppNotification
+      }
+    } catch {
+      isSupabaseNotificationsAvailable = false
     }
-  } catch (err) {
-    console.warn("Supabase notifications insert error:", err)
   }
 
-  // 2. Persist to local broadcast store
+  // 2. Fallback representation if database insert is not used
+  if (!createdNotif) {
+    createdNotif = {
+      ...params,
+      id: generateUUID(),
+      created_at: new Date().toISOString()
+    }
+  }
+
+  // 3. Always update local store for instant UI sync
   try {
     const current = await fetchNotifications()
-    const updated = [newNotif, ...current.filter(n => n.id !== newNotif.id)]
+    const updated = [createdNotif, ...current.filter(n => n.id !== createdNotif!.id)]
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
-    window.dispatchEvent(new CustomEvent('startupsindia:notification_added', { detail: newNotif }))
+    window.dispatchEvent(new CustomEvent('startupsindia:notification_added', { detail: createdNotif }))
   } catch (err) {
-    console.error("Failed to write notification to local store:", err)
+    console.warn("Failed to write notification to local store:", err)
   }
 
-  return newNotif
+  return createdNotif
 }
 
 export async function deleteNotification(id: string): Promise<void> {
-  // Try Supabase delete
-  try {
-    await supabase.from('notifications').delete().eq('id', id)
-  } catch {
-    // ignore
+  // 1. Delete from Supabase if table is online and ID is a valid UUID
+  if (isSupabaseNotificationsAvailable !== false && isUUID(id)) {
+    try {
+      await supabase.from('notifications').delete().eq('id', id)
+    } catch {
+      // ignore
+    }
   }
 
-  // Local store delete
+  // 2. Delete from local store
   try {
     const current = await fetchNotifications()
     const updated = current.filter(n => n.id !== id)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
     window.dispatchEvent(new CustomEvent('startupsindia:notification_added'))
   } catch (err) {
-    console.error("Failed to delete notification:", err)
+    console.warn("Failed to delete notification from local store:", err)
   }
 }
 

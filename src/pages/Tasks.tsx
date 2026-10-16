@@ -146,7 +146,12 @@ export const Tasks = () => {
           upsert: true
         })
 
-      if (uploadError) throw uploadError
+      if (uploadError) {
+        if (uploadError.message?.toLowerCase().includes('bucket not found')) {
+          throw new Error("Supabase storage bucket 'proofs' has not been created yet. Please run the setup SQL in your Supabase dashboard.")
+        }
+        throw uploadError
+      }
 
       const { data } = supabase.storage.from('proofs').getPublicUrl(filePath)
       setProofData(data.publicUrl)

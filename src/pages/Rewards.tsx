@@ -25,6 +25,8 @@ type Claim = {
   status: string
 }
 
+let isRewardClaimsAvailable: boolean | null = null
+
 export const Rewards = () => {
   const [rewards, setRewards] = useState<Reward[]>([])
   const [claims, setClaims] = useState<Claim[]>([])
@@ -56,11 +58,42 @@ export const Rewards = () => {
           setAmbassadorId(profile.id)
 
           // Fetch existing claims for this ambassador
-          const { data: claimData } = await supabase
-            .from('reward_claims')
-            .select('id, reward_id, status')
-            .eq('ambassador_id', profile.id)
-          if (claimData) setClaims(claimData)
+          let loadedClaims: { id: string; reward_id: string; status: string }[] = []
+
+          if (isRewardClaimsAvailable !== false) {
+            try {
+              const { data: claimData, error: claimErr } = await supabase
+                .from('reward_claims')
+                .select('id, reward_id, status')
+                .eq('ambassador_id', profile.id)
+
+              if (claimErr) {
+                if (claimErr.code === 'PGRST205' || claimErr.message?.includes('schema cache')) {
+                  isRewardClaimsAvailable = false
+                }
+              } else if (claimData) {
+                isRewardClaimsAvailable = true
+                loadedClaims = claimData
+              }
+            } catch {
+              isRewardClaimsAvailable = false
+            }
+          }
+
+          // Fallback to persistent local claims store if Supabase table is pending
+          if (isRewardClaimsAvailable === false) {
+            try {
+              const raw = localStorage.getItem(`startupsindia_claims_${profile.id}`)
+              if (raw) {
+                const parsed = JSON.parse(raw)
+                if (Array.isArray(parsed)) loadedClaims = parsed
+              }
+            } catch {
+              // ignore
+            }
+          }
+
+          setClaims(loadedClaims)
         }
       }
 
@@ -106,14 +139,43 @@ export const Rewards = () => {
 
     setClaiming(reward.id)
     try {
-      const { error: insertErr } = await supabase.from('reward_claims').insert([{
-        ambassador_id: ambassadorId,
-        reward_id: reward.id,
-        status: 'Claim Requested'
-      }])
+      let claimPersisted = false
 
-      if (insertErr) {
-        console.warn('Reward claim note:', insertErr.message)
+      if (isRewardClaimsAvailable !== false) {
+        try {
+          const { error: insertErr } = await supabase.from('reward_claims').insert([{
+            ambassador_id: ambassadorId,
+            reward_id: reward.id,
+            status: 'Claim Requested'
+          }])
+
+          if (insertErr) {
+            if (insertErr.code === 'PGRST205' || insertErr.message?.includes('schema cache')) {
+              isRewardClaimsAvailable = false
+            }
+          } else {
+            isRewardClaimsAvailable = true
+            claimPersisted = true
+          }
+        } catch {
+          isRewardClaimsAvailable = false
+        }
+      }
+
+      // Persist to local store if Supabase table is not yet online
+      if (!claimPersisted) {
+        const localClaim = {
+          id: `local_claim_${Date.now()}`,
+          reward_id: reward.id,
+          status: 'Claim Requested'
+        }
+        const updated = [...claims, localClaim]
+        setClaims(updated)
+        try {
+          localStorage.setItem(`startupsindia_claims_${ambassadorId}`, JSON.stringify(updated))
+        } catch {
+          // ignore
+        }
       }
 
       setClaimMessage({
